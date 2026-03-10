@@ -43,7 +43,6 @@ async function notion(path, method = 'GET', body = null) {
 
 // ── Main handler ─────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
-  // CORS headers (allow your deployed URL or all origins)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -66,7 +65,6 @@ export default async function handler(req, res) {
 
     // ── GET: exercises ───────────────────────────────────────────────────────
     if (action === 'exercises') {
-      // Paginate to get all exercises (Notion max 100 per page)
       let all = [];
       let cursor = undefined;
       do {
@@ -89,18 +87,13 @@ export default async function handler(req, res) {
     // ── POST: create-workout ─────────────────────────────────────────────────
     if (action === 'create-workout' && req.method === 'POST') {
       const { date, exerciseNames = [] } = req.body ?? {};
-
-      // Build a readable name: "10 Mar — Bench Press, Squat +2"
       const shortDate = date
         ? new Date(date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
         : new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
-
       const exLabel = exerciseNames.length > 0
         ? exerciseNames.slice(0, 2).join(', ') + (exerciseNames.length > 2 ? ` +${exerciseNames.length - 2}` : '')
         : 'Custom Workout';
-
       const name = `${shortDate} — ${exLabel}`;
-
       const page = await notion('/pages', 'POST', {
         parent: { database_id: DB.workouts },
         properties: {
@@ -109,14 +102,12 @@ export default async function handler(req, res) {
           'Is Template': { checkbox: false },
         },
       });
-
       return res.json({ id: page.id });
     }
 
     // ── POST: create-set ─────────────────────────────────────────────────────
     if (action === 'create-set' && req.method === 'POST') {
       const { workoutId, exerciseId, exerciseName, setNum, weight, reps } = req.body ?? {};
-
       const page = await notion('/pages', 'POST', {
         parent: { database_id: DB.logbook },
         properties: {
@@ -129,7 +120,6 @@ export default async function handler(req, res) {
           Workout:  { relation: [{ id: workoutId }] },
         },
       });
-
       return res.json({ id: page.id });
     }
 
@@ -140,12 +130,61 @@ export default async function handler(req, res) {
         sorts: [{ property: 'Date', direction: 'descending' }],
         page_size: 15,
       });
-
       return res.json(data.results.map(p => ({
         id: p.id,
         name: p.properties.Name?.title?.[0]?.plain_text ?? 'Workout',
         date: p.properties.Date?.date?.start ?? '',
       })));
+    }
+
+    // ── GET: workout-detail ──────────────────────────────────────────────────
+    if (action === 'workout-detail') {
+      const { workoutId } = req.query;
+      if (!workoutId) return res.status(400).json({ error: 'workoutId required' });
+
+      const workout = await notion(`/pages/${workoutId}`);
+
+      let all = [];
+      let cursor = undefined;
+      do {
+        const data = await notion(`/databases/${DB.logbook}/query`, 'POST', {
+          filter: { property: 'Workout', relation: { contains: workoutId } },
+          sorts: [{ property: 'Set', direction: 'ascending' }],
+          page_size: 100,
+          ...(cursor ? { start_cursor: cursor } : {}),
+        });
+        all = all.concat(data.results);
+        cursor = data.has_more ? data.next_cursor : undefined;
+      } while (cursor);
+
+      const exerciseMap = new Map();
+      for (const entry of all) {
+        const exRelations = entry.properties.Exercise?.relation ?? [];
+        const exId = exRelations[0]?.id ?? 'unknown';
+        const notes = entry.properties.Notes?.title?.[0]?.plain_text ?? '';
+        const exName = notes.split(' · Set ')[0] || 'Unknown Exercise';
+        if (!exerciseMap.has(exId)) {
+          exerciseMap.set(exId, { id: exId, name: exName, sets: [] });
+        }
+        exerciseMap.get(exId).sets.push({
+          notionId: entry.id,
+          setNum: entry.properties.Set?.number ?? (exerciseMap.get(exId).sets.length + 1),
+          weight: entry.properties.Weight?.number ?? 0,
+          reps: entry.properties.Reps?.number ?? 0,
+        });
+      }
+
+      const exercises = Array.from(exerciseMap.values()).map(ex => ({
+        ...ex,
+        sets: ex.sets.sort((a, b) => a.setNum - b.setNum),
+      }));
+
+      return res.json({
+        id: workout.id,
+        name: workout.properties.Name?.title?.[0]?.plain_text ?? 'Workout',
+        date: workout.properties.Date?.date?.start ?? '',
+        exercises,
+      });
     }
 
     // ── Unknown action ───────────────────────────────────────────────────────
