@@ -181,9 +181,18 @@
     .active-banner .ab-meta { font-size: 13px; color: #666; margin-top: 2px; }
 
     /* ── History ── */
-    .history-item { padding: 14px 16px; margin-bottom: 8px; }
+    .history-item { padding: 14px 16px; margin-bottom: 8px; cursor: pointer; }
+    .history-item:active { opacity: 0.75; }
+    .history-item .h-row { display: flex; align-items: center; justify-content: space-between; }
     .history-item .h-name { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
     .history-item .h-meta { font-size: 13px; color: #666; }
+    .history-item .h-arrow { font-size: 18px; color: #555; flex-shrink: 0; margin-left: 10px; }
+
+    /* ── Workout Detail ── */
+    .detail-exercise { margin-bottom: 18px; }
+    .detail-ex-name { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+    .detail-ex-total { font-size: 12px; color: #666; margin-top: 6px; }
+    .resume-warn { background: #1a1500; border: 1.5px solid #ffb300; border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 13px; color: #ffb300; }
 
     /* ── Setup Banner ── */
     .setup-banner {
@@ -357,6 +366,24 @@
 </div>
 
 
+<!-- ═══════════════════════════════════════════
+     VIEW 7 — WORKOUT DETAIL
+═══════════════════════════════════════════ -->
+<div id="view-detail" class="view">
+  <div class="header">
+    <button class="back-btn" onclick="showView('view-history')">← History</button>
+    <h1 id="detail-title">Workout</h1>
+    <div class="header-sub" id="detail-sub"></div>
+  </div>
+  <div class="content" id="detail-content">
+    <div class="loading-state"><div class="spinner"></div> Loading…</div>
+  </div>
+  <div class="bottom-bar" id="detail-bottom" style="display:none;">
+    <button class="btn btn-primary" onclick="resumeWorkout()">⚡ Continue This Workout</button>
+  </div>
+</div>
+
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -380,6 +407,8 @@ const S = {
   notionWorkoutId: null,
   saving: false,
   notionConnected: true,
+  // History detail
+  detailWorkout: null,
 };
 
 // ════════════════════════════════════════════════════
@@ -784,7 +813,7 @@ function buildFinishView() {
   }
 }
 
-async function saveToNotion() {
+a{ function saveToNotion() {
   if (S.saving || S.notionWorkoutId) return;
   S.saving = true;
 
@@ -848,13 +877,113 @@ async function loadHistory() {
       return;
     }
     content.innerHTML = workouts.map(w => `
-      <div class="card history-item" style="margin-bottom:10px;">
-        <div class="h-name">${w.name}</div>
-        <div class="h-meta">${fmtDateFromStr(w.date)}${w.sets ? ` · ${w.sets} sets` : ''}</div>
+      <div class="card history-item" style="margin-bottom:10px;" onclick="openWorkoutDetail('${w.id}', \`${esc(w.name)}\`, '${w.date}')">
+        <div class="h-row">
+          <div>
+            <div class="h-name">${w.name}</div>
+            <div class="h-meta">${fmtDateFromStr(w.date)}</div>
+          </div>
+          <span class="h-arrow">›</span>
+        </div>
       </div>`).join('');
   } catch (e) {
     content.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Could not load history</div>';
   }
+}
+
+async function openWorkoutDetail(workoutId, name, date) {
+  // Show the detail view immediately with a loading state
+  document.getElementById('detail-title').textContent = name;
+  document.getElementById('detail-sub').textContent = fmtDateFromStr(date);
+  document.getElementById('detail-content').innerHTML =
+    '<div class="loading-state"><div class="spinner"></div> Loading sets…</div>';
+  document.getElementById('detail-bottom').style.display = 'none';
+  showView('view-detail');
+
+  try {
+    const detail = await api(`workout-detail&workoutId=${workoutId}`);
+    S.detailWorkout = detail;
+    renderWorkoutDetail(detail);
+  } catch (e) {
+    document.getElementById('detail-content').innerHTML =
+      '<div class="empty"><div class="icon">⚠️</div>Could not load workout details</div>';
+  }
+}
+
+function renderWorkoutDetail(detail) {
+  const content = document.getElementById('detail-content');
+
+  if (!detail.exercises || detail.exercises.length === 0) {
+    content.innerHTML = '<div class="empty"><div class="icon">🏋️</div>No sets recorded for this workout</div>';
+    return;
+  }
+
+  const totalSets = detail.exercises.reduce((t, ex) => t + ex.sets.length, 0);
+
+  // Show resume warning if there's already an active workout
+  const warnHtml = (S.workoutExercises.length > 0 && !S.notionWorkoutId)
+    ? '<div class="resume-warn">⚠️ You have an unsaved workout in progress. Continuing this one will replace it.</div>'
+    : '';
+
+  content.innerHTML = warnHtml + detail.exercises.map(ex => {
+    const setHtml = ex.sets.map((s, i) => `
+      <div class="set-pill">
+        <span class="sn">S${s.setNum}</span>
+        <span>${s.weight}kg × ${s.reps}</span>
+      </div>`).join('');
+
+    const maxWeight = Math.max(...ex.sets.map(s => s.weight));
+    const maxReps   = ex.sets.find(s => s.weight === maxWeight)?.reps ?? 0;
+
+    return `
+      <div class="detail-exercise card card-sm">
+        <div class="detail-ex-name">${ex.name}</div>
+        <div class="sets-grid">${setHtml}</div>
+        <div class="detail-ex-total">${ex.sets.length} set${ex.sets.length !== 1 ? 's' : ''} · top set: ${maxWeight}kg × ${maxReps}</div>
+      </div>`;
+  }).join('');
+
+  // Show continue button
+  document.getElementById('detail-bottom').style.display = 'flex';
+}
+
+function resumeWorkout() {
+  if (!S.detailWorkout) return;
+
+  // Warn if unsaved active workout will be lost
+  if (S.workoutExercises.length > 0 && !S.notionWorkoutId) {
+    if (!confirm('You have an unsaved workout in progress. Replace it with this one?')) return;
+  }
+
+  // Reconstruct workout state from the detail
+  S.workoutExercises = S.detailWorkout.exercises.map(ex => {
+    const loadedEx = S.exercises.find(e => e.id === ex.id) || {};
+    return {
+      id: ex.id,
+      name: ex.name,
+      muscleGroupIds: loadedEx.muscleGroupIds || [],
+      sets: ex.sets.map(s => ({
+        setNum: s.setNum,
+        weight: s.weight,
+        reps: s.reps,
+        notionId: s.notionId,
+      })),
+    };
+  });
+
+  S.notionWorkoutId = S.detailWorkout.id;
+  S.activeExIdx = 0;
+  S.saving = false;
+
+  // Pre-fill steppers from last set of first exercise
+  if (S.workoutExercises[0]?.sets.length > 0) {
+    const last = S.workoutExercises[0].sets[S.workoutExercises[0].sets.length - 1];
+    S.weight = last.weight;
+    S.reps = last.reps;
+  }
+
+  toast('Resumed — carry on! 💪');
+  showView('view-workout');
 }
 
 // ════════════════════════════════════════════════════
@@ -929,7 +1058,7 @@ const MG = {
 };
 
 const FALLBACK_EXERCISES = [
-  // ── Chest ─────────────────────────────────────────────────────────────────
+  // ── Chest ────────────────────────────────────────────────────────────────
   { id: '1ddf1256-1537-81a0-8f02-fdf127fe73b1', name: 'Bench Press',                         muscleGroupIds: [MG.CHEST] },
   { id: '31bf1256-1537-8190-b757-feb59fdf90ea', name: 'Incline Dumbbell Press',               muscleGroupIds: [MG.CHEST] },
   { id: '31bf1256-1537-8143-b4c0-fbd14b516897', name: 'Incline Dumbbell Flye',               muscleGroupIds: [MG.CHEST] },
