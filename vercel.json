@@ -1,0 +1,9 @@
+{
+  "framework": null,
+  "functions": {
+    "api/notion.js": {
+      "memory": 128,
+      "maxDuration": 15
+    }
+  }
+}
