@@ -43,6 +43,7 @@ async function notion(path, method = 'GET', body = null) {
 
 // ── Main handler ─────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
+  // CORS headers (allow your deployed URL or all origins)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -65,6 +66,7 @@ export default async function handler(req, res) {
 
     // ── GET: exercises ───────────────────────────────────────────────────────
     if (action === 'exercises') {
+      // Paginate to get all exercises (Notion max 100 per page)
       let all = [];
       let cursor = undefined;
       do {
@@ -87,13 +89,18 @@ export default async function handler(req, res) {
     // ── POST: create-workout ─────────────────────────────────────────────────
     if (action === 'create-workout' && req.method === 'POST') {
       const { date, exerciseNames = [] } = req.body ?? {};
+
+      // Build a readable name: "10 Mar — Bench Press, Squat +2"
       const shortDate = date
         ? new Date(date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
         : new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+
       const exLabel = exerciseNames.length > 0
         ? exerciseNames.slice(0, 2).join(', ') + (exerciseNames.length > 2 ? ` +${exerciseNames.length - 2}` : '')
         : 'Custom Workout';
+
       const name = `${shortDate} — ${exLabel}`;
+
       const page = await notion('/pages', 'POST', {
         parent: { database_id: DB.workouts },
         properties: {
@@ -102,25 +109,62 @@ export default async function handler(req, res) {
           'Is Template': { checkbox: false },
         },
       });
+
       return res.json({ id: page.id });
     }
 
     // ── POST: create-set ─────────────────────────────────────────────────────
     if (action === 'create-set' && req.method === 'POST') {
-      const { workoutId, exerciseId, exerciseName, setNum, weight, reps } = req.body ?? {};
+      const { workoutId, exerciseId, exerciseName, setNum, weight, reps, isBodyweight, seconds } = req.body ?? {};
+
+      // Build notes: "ExerciseName · Set N [· BW] [· Xs]"
+      let notes = `${exerciseName} · Set ${setNum}`;
+      if (isBodyweight) notes += ' · BW';
+      if (seconds > 0) notes += ` · ${seconds}s`;
+
       const page = await notion('/pages', 'POST', {
         parent: { database_id: DB.logbook },
         properties: {
-          Notes:    { title: [{ text: { content: `${exerciseName} · Set ${setNum}` } }] },
+          Notes:    { title: [{ text: { content: notes } }] },
           Set:      { number: setNum },
-          Weight:   { number: weight },
-          Reps:     { number: reps },
+          Weight:   { number: weight ?? null },
+          Reps:     { number: reps ?? null },
           Done:     { checkbox: true },
           Exercise: { relation: [{ id: exerciseId }] },
           Workout:  { relation: [{ id: workoutId }] },
         },
       });
+
       return res.json({ id: page.id });
+    }
+
+    // ── POST: delete-workout ─────────────────────────────────────────────────
+    if (action === 'delete-workout' && req.method === 'POST') {
+      const { workoutId } = req.body ?? {};
+      if (!workoutId) return res.status(400).json({ error: 'workoutId required' });
+
+      // Fetch all logbook entries for this workout (paginated)
+      let all = [];
+      let cursor = undefined;
+      do {
+        const data = await notion(`/databases/${DB.logbook}/query`, 'POST', {
+          filter: { property: 'Workout', relation: { contains: workoutId } },
+          page_size: 100,
+          ...(cursor ? { start_cursor: cursor } : {}),
+        });
+        all = all.concat(data.results);
+        cursor = data.has_more ? data.next_cursor : undefined;
+      } while (cursor);
+
+      // Archive (trash) all logbook entries
+      await Promise.all(all.map(entry =>
+        notion(`/pages/${entry.id}`, 'PATCH', { archived: true })
+      ));
+
+      // Archive the workout page itself
+      await notion(`/pages/${workoutId}`, 'PATCH', { archived: true });
+
+      return res.json({ ok: true, deleted: all.length + 1 });
     }
 
     // ── GET: recent-workouts ─────────────────────────────────────────────────
@@ -130,6 +174,7 @@ export default async function handler(req, res) {
         sorts: [{ property: 'Date', direction: 'descending' }],
         page_size: 15,
       });
+
       return res.json(data.results.map(p => ({
         id: p.id,
         name: p.properties.Name?.title?.[0]?.plain_text ?? 'Workout',
@@ -142,8 +187,10 @@ export default async function handler(req, res) {
       const { workoutId } = req.query;
       if (!workoutId) return res.status(400).json({ error: 'workoutId required' });
 
+      // Fetch workout info
       const workout = await notion(`/pages/${workoutId}`);
 
+      // Fetch all logbook entries for this workout (paginated)
       let all = [];
       let cursor = undefined;
       do {
@@ -157,23 +204,40 @@ export default async function handler(req, res) {
         cursor = data.has_more ? data.next_cursor : undefined;
       } while (cursor);
 
+      // Group sets by exercise
       const exerciseMap = new Map();
       for (const entry of all) {
         const exRelations = entry.properties.Exercise?.relation ?? [];
         const exId = exRelations[0]?.id ?? 'unknown';
+
+        // Extract exercise name from Notes field ("Exercise Name · Set N [· BW] [· Xs]")
         const notes = entry.properties.Notes?.title?.[0]?.plain_text ?? '';
         const exName = notes.split(' · Set ')[0] || 'Unknown Exercise';
+
+        // Parse bodyweight and time from notes
+        const isBodyweight = notes.includes(' · BW');
+        const secMatch = notes.match(/ · (\d+)s(?:\s|$)/);
+        const seconds = secMatch ? parseInt(secMatch[1]) : 0;
+
+        const rawWeight = entry.properties.Weight?.number;
+        const rawReps = entry.properties.Reps?.number;
+
         if (!exerciseMap.has(exId)) {
           exerciseMap.set(exId, { id: exId, name: exName, sets: [] });
         }
+
         exerciseMap.get(exId).sets.push({
           notionId: entry.id,
           setNum: entry.properties.Set?.number ?? (exerciseMap.get(exId).sets.length + 1),
-          weight: entry.properties.Weight?.number ?? 0,
-          reps: entry.properties.Reps?.number ?? 0,
+          weight: rawWeight ?? null,
+          reps: rawReps ?? null,
+          isBodyweight: isBodyweight || rawWeight === null,
+          repsNA: rawReps === null,
+          seconds,
         });
       }
 
+      // Sort sets within each exercise by set number
       const exercises = Array.from(exerciseMap.values()).map(ex => ({
         ...ex,
         sets: ex.sets.sort((a, b) => a.setNum - b.setNum),
