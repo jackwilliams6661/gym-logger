@@ -464,7 +464,7 @@ const S = {
 const MUSCLE_EMOJI = {
   'Chest': '🫁', 'Back': '🏋️', 'Shoulders': '💪', 'Biceps': '💪',
   'Triceps': '💪', 'Quadriceps': '🦵', 'Hamstrings': '🦵', 'Calves': '🦵',
-  'Traps': '🔱', 'Abs': '⚡', 'Core': '⚡', 'Glutes': '🍑',
+  'Traps': '🔱', 'Core': '⚡', 'Glutes': '🍑',
 };
 
 // ════════════════════════════════════════════════════
@@ -545,7 +545,7 @@ async function startNewWorkout() {
 // ════════════════════════════════════════════════════
 function normalizeMuscleGroups() {
   // Merge known duplicate/alias names into one canonical group
-  const ALIASES = { 'Calf': 'Calves' };
+  const ALIASES = { 'Calf': 'Calves', 'Abs': 'Core' };
 
   // Step 1: Rename aliases
   for (const mg of S.muscleGroups) {
@@ -1306,7 +1306,7 @@ const FALLBACK_MUSCLES = [
   { id: '1ddf1256-1537-8185-bbf4-dcdbb2129aef', name: 'Hamstrings' },
   { id: '31bf1256-1537-814b-a14c-faa4d0715853', name: 'Calves' },
   { id: '31bf1256-1537-81e3-8e93-d699124e0952', name: 'Traps' },
-  { id: '1ddf1256-1537-81cc-837d-e8a211cd9542', name: 'Abs' },
+  { id: '1ddf1256-1537-81cc-837d-e8a211cd9542', name: 'Core' },
 ];
 
 // Shorthand for muscle group IDs
@@ -1320,7 +1320,7 @@ const MG = {
   HAMS:   '1ddf1256-1537-8185-bbf4-dcdbb2129aef',
   CALVES: '31bf1256-1537-814b-a14c-faa4d0715853',
   TRAPS:  '31bf1256-1537-81e3-8e93-d699124e0952',
-  ABS:    '1ddf1256-1537-81cc-837d-e8a211cd9542',
+  CORE:   '1ddf1256-1537-81cc-837d-e8a211cd9542',
 };
 
 const FALLBACK_EXERCISES = [
@@ -1374,12 +1374,13 @@ const FALLBACK_EXERCISES = [
   // ── Traps ─────────────────────────────────────────────────────────────────
   { id: '31bf1256-1537-8193-9ca5-fc5b8e9ca4f6', name: 'Barbell Shrug',                       muscleGroupIds: [MG.TRAPS] },
   { id: '31bf1256-1537-813d-b9e4-f7438146f59c', name: 'Dumbbell Shrug',                      muscleGroupIds: [MG.TRAPS] },
-  // ── Abs ───────────────────────────────────────────────────────────────────
-  { id: '31bf1256-1537-8186-bc24-ec62715960b5', name: 'Weighted Crunch',                     muscleGroupIds: [MG.ABS] },
-  { id: '31bf1256-1537-817a-b762-c8d2a2fb7ad6', name: 'Hanging Leg Raise',                   muscleGroupIds: [MG.ABS] },
-  { id: '31bf1256-1537-81cd-b51e-e0ff422a86ae', name: 'Dumbbell Side Bend',                  muscleGroupIds: [MG.ABS] },
-  { id: '31bf1256-1537-81e0-bf12-f0a910e12085', name: 'Crunch',                              muscleGroupIds: [MG.ABS] },
-  { id: '31bf1256-1537-81c6-8228-f04badbd94c3', name: 'Oblique Crunch',                      muscleGroupIds: [MG.ABS] },
+  // ── Core ───────────────────────────────────────────────────────────────────
+  { id: '31bf1256-1537-8186-bc24-ec62715960b5', name: 'Weighted Crunch',                     muscleGroupIds: [MG.CORE] },
+  { id: '31bf1256-1537-817a-b762-c8d2a2fb7ad6', name: 'Hanging Leg Raise',                   muscleGroupIds: [MG.CORE] },
+  { id: '31bf1256-1537-81cd-b51e-e0ff422a86ae', name: 'Dumbbell Side Bend',                  muscleGroupIds: [MG.CORE] },
+  { id: '31bf1256-1537-81e0-bf12-f0a910e12085', name: 'Crunch',                              muscleGroupIds: [MG.CORE] },
+  { id: '31bf1256-1537-81c6-8228-f04badbd94c3', name: 'Oblique Crunch',                      muscleGroupIds: [MG.CORE] },
+  { id: '31bf1256-1537-81ff-b0d2-c0a800000001', name: 'Superman Hold',                        muscleGroupIds: [MG.CORE] },
 ];
 </script>
 </body>
