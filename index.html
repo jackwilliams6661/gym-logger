@@ -435,6 +435,7 @@
 // ════════════════════════════════════════════════════
 const S = {
   muscleGroups: [],
+  mgById: {},        // reverse lookup: any id (canonical or alias) -> canonical group
   exercises: [],
   loaded: false,
   // Current workout
@@ -481,6 +482,7 @@ async function loadData() {
       api('exercises'),
     ]);
     S.muscleGroups = muscles;
+    normalizeMuscleGroups();
     S.exercises = exercises;
     S.loaded = true;
     S.notionConnected = true;
@@ -491,6 +493,7 @@ async function loadData() {
     document.getElementById('setup-banner').style.display = 'block';
     // Graceful fallback
     S.muscleGroups = FALLBACK_MUSCLES;
+    normalizeMuscleGroups();
     S.exercises = FALLBACK_EXERCISES;
     S.loaded = true;
   }
@@ -538,6 +541,40 @@ async function startNewWorkout() {
 // ════════════════════════════════════════════════════
 //  MUSCLE SELECTION
 // ════════════════════════════════════════════════════
+//  MUSCLE GROUP NORMALIZATION
+// ════════════════════════════════════════════════════
+function normalizeMuscleGroups() {
+  // Merge known duplicate/alias names into one canonical group
+  const ALIASES = { 'Calf': 'Calves' };
+
+  // Step 1: Rename aliases
+  for (const mg of S.muscleGroups) {
+    if (ALIASES[mg.name]) mg.name = ALIASES[mg.name];
+  }
+
+  // Step 2: Deduplicate by name, merging extra IDs into aliasIds
+  const seen = new Map();
+  const merged = [];
+  for (const mg of S.muscleGroups) {
+    if (seen.has(mg.name)) {
+      seen.get(mg.name).aliasIds.push(mg.id);
+    } else {
+      mg.aliasIds = [];
+      seen.set(mg.name, mg);
+      merged.push(mg);
+    }
+  }
+  S.muscleGroups = merged;
+
+  // Step 3: Build reverse lookup (canonical id + all alias ids -> canonical group)
+  S.mgById = {};
+  for (const mg of S.muscleGroups) {
+    S.mgById[mg.id] = mg;
+    for (const aid of mg.aliasIds) S.mgById[aid] = mg;
+  }
+}
+
+// ════════════════════════════════════════════════════
 function renderMuscleGrid() {
   const loading = document.getElementById('loading-muscles');
   const grid = document.getElementById('muscle-grid');
@@ -547,7 +584,7 @@ function renderMuscleGrid() {
 
   const validMuscles = S.muscleGroups.filter(m => m.name && m.name !== 'New Muscle Group');
   grid.innerHTML = validMuscles.map(m => `
-    <button class="muscle-btn ${S.selectedMuscles.includes(m.id) ? 'selected' : ''}"
+    <button class="muscle-btn ${(S.selectedMuscles.includes(m.id) || (m.aliasIds||[]).some(aid => S.selectedMuscles.includes(aid))) ? 'selected' : ''}"
             onclick="toggleMuscle('${m.id}')">
       <span class="emoji">${MUSCLE_EMOJI[m.name] || '💪'}</span>
       ${m.name}
@@ -558,9 +595,16 @@ function renderMuscleGrid() {
 }
 
 function toggleMuscle(id) {
-  const idx = S.selectedMuscles.indexOf(id);
-  if (idx > -1) S.selectedMuscles.splice(idx, 1);
-  else S.selectedMuscles.push(id);
+  const mg = S.mgById?.[id];
+  const allIds = mg ? [mg.id, ...mg.aliasIds] : [id];
+  const isSelected = allIds.some(aid => S.selectedMuscles.includes(aid));
+  if (isSelected) {
+    S.selectedMuscles = S.selectedMuscles.filter(sid => !allIds.includes(sid));
+  } else {
+    for (const aid of allIds) {
+      if (!S.selectedMuscles.includes(aid)) S.selectedMuscles.push(aid);
+    }
+  }
   renderMuscleGrid();
 }
 
@@ -568,9 +612,11 @@ function toggleMuscle(id) {
 //  EXERCISE SELECTION
 // ════════════════════════════════════════════════════
 function goToExercises() {
-  const muscleNames = S.selectedMuscles
-    .map(id => S.muscleGroups.find(m => m.id === id)?.name)
-    .filter(Boolean);
+  const muscleNames = [...new Set(
+    S.selectedMuscles
+      .map(id => S.mgById?.[id]?.name)
+      .filter(Boolean)
+  )];
 
   document.getElementById('ex-view-title').textContent = muscleNames.join(' · ');
 
@@ -592,9 +638,9 @@ function renderExerciseList() {
 
   list.innerHTML = filtered.map(e => {
     const added = S.workoutExercises.some(we => we.id === e.id);
-    const muscleLabel = e.muscleGroupIds
-      .map(id => S.muscleGroups.find(m => m.id === id)?.name)
-      .filter(Boolean).join(', ');
+    const muscleLabel = [...new Set(e.muscleGroupIds
+      .map(id => S.mgById?.[id]?.name)
+      .filter(Boolean))].join(', ');
     return `
       <div class="exercise-item ${added ? 'added' : ''}" onclick="toggleExercise('${e.id}', \`${esc(e.name)}\`)">
         <div>
@@ -1035,7 +1081,7 @@ async function loadHistory() {
   }
 }
 
-// ── Long-press / action sheet for history  ───────────────────────────────
+// ── Long-press / action sheet for history ────────────────────────────────
 let _lpTimer = null;
 let _lpFired = false;
 
