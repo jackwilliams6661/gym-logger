@@ -194,6 +194,38 @@
     .detail-ex-total { font-size: 12px; color: #666; margin-top: 6px; }
     .resume-warn { background: #1a1500; border: 1.5px solid #ffb300; border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: 13px; color: #ffb300; }
 
+    /* ── Toggle Chips (BW / NA / Time) ── */
+    .toggle-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .toggle-chip {
+      padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 700;
+      cursor: pointer; border: 1.5px solid #333; background: #1a1a1a; color: #666;
+      transition: all 0.15s; user-select: none; -webkit-user-select: none;
+    }
+    .toggle-chip.on { border-color: #ff6b35; background: rgba(255,107,53,0.15); color: #ff6b35; }
+    .toggle-chip.na-on { border-color: #aaa; background: rgba(200,200,200,0.1); color: #ccc; }
+    .na-display { font-size: 42px; font-weight: 800; letter-spacing: -1px; line-height: 1; color: #aaa; }
+
+    /* ── Delete Action Sheet ── */
+    .action-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000;
+      display: flex; align-items: flex-end; padding: 16px;
+      opacity: 0; transition: opacity 0.2s; pointer-events: none;
+    }
+    .action-overlay.show { opacity: 1; pointer-events: all; }
+    .action-sheet {
+      background: #1c1c1c; border-radius: 18px; width: 100%; overflow: hidden;
+      transform: translateY(40px); transition: transform 0.25s ease;
+    }
+    .action-overlay.show .action-sheet { transform: translateY(0); }
+    .action-sheet-title { padding: 16px 18px 10px; font-size: 13px; color: #555; text-align: center; }
+    .action-btn {
+      display: block; width: 100%; padding: 16px 18px; text-align: center;
+      font-size: 17px; font-weight: 600; background: none; border: none; cursor: pointer;
+      border-top: 1px solid #2a2a2a; color: #fff;
+    }
+    .action-btn.danger { color: #ff4444; }
+    .action-btn.cancel { color: #888; font-weight: 400; margin-top: 8px; background: #151515; border-radius: 14px; border: none; }
+
     /* ── Setup Banner ── */
     .setup-banner {
       background: #1a1500; border: 1.5px solid #ffb300; border-radius: 14px;
@@ -231,890 +263,127 @@
   </style>
 </head>
 <body>
-
-<!-- ═══════════════════════════════════════════
-     VIEW 1 — HOME
-═══════════════════════════════════════════ -->
-<div id="view-home" class="view active">
-  <div class="header" style="border-bottom:none;">
-    <h1>💪 Gym Logger</h1>
-  </div>
-  <div class="content">
-    <div class="home-date" id="home-date"></div>
-
-    <div id="active-banner" class="active-banner" style="display:none;" onclick="showView('view-workout')">
-      <div class="ab-label">⚡ Workout in progress</div>
-      <div class="ab-name" id="ab-name"></div>
-      <div class="ab-meta" id="ab-meta"></div>
-    </div>
-
-    <div id="setup-banner" class="setup-banner" style="display:none;">
-      <div class="sb-title">⚠️ Not connected to Notion</div>
-      <div class="sb-body">The app is running but can't reach your Notion yet. Workouts will be saved locally and you can sync them manually. See the README for setup instructions.</div>
-    </div>
-
-    <button class="btn btn-primary" id="start-btn" onclick="startNewWorkout()">Start Workout</button>
-    <button class="btn btn-secondary" style="margin-top:10px;" onclick="goToHistory()">View History</button>
-  </div>
-</div>
-
-
-<!-- ═══════════════════════════════════════════
-     VIEW 2 — MUSCLE GROUP SELECTION
-═══════════════════════════════════════════ -->
-<div id="view-muscles" class="view">
-  <div class="header">
-    <button class="back-btn" onclick="showView('view-home')">← Back</button>
-    <h1>Muscle Groups</h1>
-    <div class="header-sub">Pick what you're training today</div>
-  </div>
-  <div class="content">
-    <div id="loading-muscles" class="loading-state"><div class="spinner"></div> Loading…</div>
-    <div id="muscle-grid" class="muscle-grid" style="display:none;"></div>
-  </div>
-  <div class="bottom-bar">
-    <button class="btn btn-primary" id="muscles-next-btn" onclick="goToExercises()" disabled>Next: Pick Exercises →</button>
-  </div>
-</div>
-
-
-<!-- ═══════════════════════════════════════════
-     VIEW 3 — EXERCISE SELECTION
-═══════════════════════════════════════════ -->
-<div id="view-exercises" class="view">
-  <div class="header">
-    <button class="back-btn" onclick="showView('view-muscles')">← Back</button>
-    <h1 id="ex-view-title">Exercises</h1>
-    <div class="header-sub" id="ex-view-sub">Tap to add to today's workout</div>
-  </div>
-  <div class="content">
-    <div id="exercise-list"></div>
-  </div>
-  <div class="bottom-bar">
-    <button class="btn btn-primary" id="ex-next-btn" onclick="showView('view-workout')" style="display:none;">Start Logging →</button>
-  </div>
-</div>
-
-
-<!-- ═══════════════════════════════════════════
-     VIEW 4 — ACTIVE WORKOUT
-═══════════════════════════════════════════ -->
-<div id="view-workout" class="view">
-  <div class="header" style="padding-bottom:0; border-bottom:none;">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-      <div id="workout-header-name" style="font-size:18px; font-weight:700;"></div>
-      <button class="btn btn-danger" style="width:auto; padding:8px 14px; font-size:13px; border-radius:10px;" onclick="confirmFinish()">Finish</button>
-    </div>
-    <div class="workout-meta" style="margin:0 -16px; padding:10px 16px;">
-      <div class="meta-item"><strong id="meta-exercises">0</strong> exercises</div>
-      <div class="meta-item"><strong id="meta-sets">0</strong> sets</div>
-      <div class="meta-item" id="meta-status" style="margin-left:auto; color:#ff6b35; font-size:13px;"></div>
-    </div>
-  </div>
-
-  <!-- Exercise tabs (scrollable) -->
-  <div class="ex-tabs" id="ex-tabs"></div>
-
-  <!-- Active exercise panel -->
-  <div class="content" id="workout-content">
-    <div id="workout-panel"></div>
-  </div>
-
-  <div class="bottom-bar">
-    <button class="btn btn-primary" id="log-set-btn" onclick="logSet()">LOG SET</button>
-    <div class="btn-row">
-      <button class="btn btn-secondary" onclick="addMoreExercises()">+ Add Exercise</button>
-      <button class="btn btn-secondary" onclick="confirmFinish()" style="border-color:#ff4444; color:#ff4444;">Finish</button>
-    </div>
-  </div>
-</div>
-
-
-<!-- ═══════════════════════════════════════════
-     VIEW 5 — FINISH / SUMMARY
-═══════════════════════════════════════════ -->
-<div id="view-finish" class="view">
-  <div class="content" style="justify-content:center;">
-    <div style="padding-top:24px;">
-      <div class="finish-icon" id="finish-icon">🎉</div>
-      <div class="finish-title">Workout Done!</div>
-      <div class="finish-sub" id="finish-sub"></div>
-
-      <div class="divider"></div>
-      <div class="section-title">Summary</div>
-      <div id="finish-summary"></div>
-    </div>
-  </div>
-  <div class="bottom-bar">
-    <button class="btn btn-primary" id="save-btn" onclick="saveToNotion()">Save to Notion</button>
-    <button class="btn btn-secondary" onclick="resetAndGoHome()">Done</button>
-  </div>
-</div>
-
-
-<!-- ═══════════════════════════════════════════
-     VIEW 6 — HISTORY
-═══════════════════════════════════════════ -->
-<div id="view-history" class="view">
-  <div class="header">
-    <button class="back-btn" onclick="showView('view-home')">← Back</button>
-    <h1>History</h1>
-  </div>
-  <div class="content" id="history-content">
-    <div class="loading-state"><div class="spinner"></div> Loading…</div>
-  </div>
-</div>
-
-
-<!-- ═══════════════════════════════════════════
-     VIEW 7 — WORKOUT DETAIL
-═══════════════════════════════════════════ -->
-<div id="view-detail" class="view">
-  <div class="header">
-    <button class="back-btn" onclick="showView('view-history')">← History</button>
-    <h1 id="detail-title">Workout</h1>
-    <div class="header-sub" id="detail-sub"></div>
-  </div>
-  <div class="content" id="detail-content">
-    <div class="loading-state"><div class="spinner"></div> Loading…</div>
-  </div>
-  <div class="bottom-bar" id="detail-bottom" style="display:none;">
-    <button class="btn btn-primary" onclick="resumeWorkout()">⚡ Continue This Workout</button>
-  </div>
-</div>
-
-
-<!-- Toast -->
-<div class="toast" id="toast"></div>
-
-
-<script>
-// ════════════════════════════════════════════════════
-//  STATE
-// ════════════════════════════════════════════════════
-const S = {
-  muscleGroups: [],
-  exercises: [],
-  loaded: false,
-  // Current workout
-  selectedMuscles: [],
-  workoutExercises: [],   // [{ id, name, muscleGroupIds, sets:[{setNum,weight,reps,notionId}] }]
-  activeExIdx: 0,
-  // Stepper state
-  weight: 20,
-  reps: 10,
-  // Notion state
-  notionWorkoutId: null,
-  saving: false,
-  notionConnected: true,
-  // History detail
-  detailWorkout: null,
-};
-
-// ════════════════════════════════════════════════════
-//  MUSCLE EMOJIS
-// ════════════════════════════════════════════════════
-const MUSCLE_EMOJI = {
-  'Chest': '🫁', 'Back': '🏋️', 'Shoulders': '💪', 'Biceps': '💪',
-  'Triceps': '💪', 'Quadriceps': '🦵', 'Hamstrings': '🦵', 'Calves': '🦵',
-  'Traps': '🔱', 'Abs': '⚡', 'Core': '⚡', 'Glutes': '🍑',
-};
-
-// ════════════════════════════════════════════════════
-//  INIT
-// ════════════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('home-date').textContent = fmtDate(new Date());
-  loadData();
-});
-
-async function loadData() {
-  try {
-    const [muscles, exercises] = await Promise.all([
-      api('muscle-groups'),
-      api('exercises'),
-    ]);
-    S.muscleGroups = muscles;
-    S.exercises = exercises;
-    S.loaded = true;
-    S.notionConnected = true;
-    document.getElementById('setup-banner').style.display = 'none';
-  } catch (e) {
-    console.warn('Could not load from Notion:', e.message);
-    S.notionConnected = false;
-    document.getElementById('setup-banner').style.display = 'block';
-    // Graceful fallback
-    S.muscleGroups = FALLBACK_MUSCLES;
-    S.exercises = FALLBACK_EXERCISES;
-    S.loaded = true;
-  }
-}
-
-// ════════════════════════════════════════════════════
-//  NAVIGATION
-// ════════════════════════════════════════════════════
-function showView(id) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  window.scrollTo(0, 0);
-}
-
-// ════════════════════════════════════════════════════
-//  HOME
-// ════════════════════════════════════════════════════
-function updateHomeBanner() {
-  const banner = document.getElementById('active-banner');
-  if (S.workoutExercises.length > 0 && !S.notionWorkoutId) {
-    banner.style.display = 'block';
-    document.getElementById('ab-name').textContent =
-      S.workoutExercises.map(e => e.name).join(', ').substring(0, 60);
-    const totalSets = S.workoutExercises.reduce((t, e) => t + e.sets.length, 0);
-    document.getElementById('ab-meta').textContent = `${S.workoutExercises.length} exercises · ${totalSets} sets logged`;
-  } else {
-    banner.style.display = 'none';
-  }
-}
-
-async function startNewWorkout() {
-  if (!S.loaded) {
-    toast('Loading data…');
-    await loadData();
-  }
-  S.selectedMuscles = [];
-  S.workoutExercises = [];
-  S.activeExIdx = 0;
-  S.notionWorkoutId = null;
-  S.saving = false;
-  renderMuscleGrid();
-  showView('view-muscles');
-}
-
-// ════════════════════════════════════════════════════
-//  MUSCLE SELECTION
-// ════════════════════════════════════════════════════
-function renderMuscleGrid() {
-  const loading = document.getElementById('loading-muscles');
-  const grid = document.getElementById('muscle-grid');
-
-  loading.style.display = 'none';
-  grid.style.display = 'grid';
-
-  const validMuscles = S.muscleGroups.filter(m => m.name && m.name !== 'New Muscle Group');
-  grid.innerHTML = validMuscles.map(m => `
-    <button class="muscle-btn ${S.selectedMuscles.includes(m.id) ? 'selected' : ''}"
-            onclick="toggleMuscle('${m.id}')">
-      <span class="emoji">${MUSCLE_EMOJI[m.name] || '💪'}</span>
-      ${m.name}
-    </button>`).join('');
-
-  const btn = document.getElementById('muscles-next-btn');
-  btn.disabled = S.selectedMuscles.length === 0;
-}
-
-function toggleMuscle(id) {
-  const idx = S.selectedMuscles.indexOf(id);
-  if (idx > -1) S.selectedMuscles.splice(idx, 1);
-  else S.selectedMuscles.push(id);
-  renderMuscleGrid();
-}
-
-// ════════════════════════════════════════════════════
-//  EXERCISE SELECTION
-// ════════════════════════════════════════════════════
-function goToExercises() {
-  const muscleNames = S.selectedMuscles
-    .map(id => S.muscleGroups.find(m => m.id === id)?.name)
-    .filter(Boolean);
-
-  document.getElementById('ex-view-title').textContent = muscleNames.join(' · ');
-
-  renderExerciseList();
-  showView('view-exercises');
-}
-
-function renderExerciseList() {
-  const filtered = S.exercises.filter(e =>
-    e.muscleGroupIds.some(mgId => S.selectedMuscles.includes(mgId))
-  );
-
-  const list = document.getElementById('exercise-list');
-
-  if (filtered.length === 0) {
-    list.innerHTML = '<div class="empty"><div class="icon">🔍</div>No exercises found for these muscle groups</div>';
-    return;
-  }
-
-  list.innerHTML = filtered.map(e => {
-    const added = S.workoutExercises.some(we => we.id === e.id);
-    const muscleLabel = e.muscleGroupIds
-      .map(id => S.muscleGroups.find(m => m.id === id)?.name)
-      .filter(Boolean).join(', ');
-    return `
-      <div class="exercise-item ${added ? 'added' : ''}" onclick="toggleExercise('${e.id}', \`${esc(e.name)}\`)">
-        <div>
-          <div class="ex-name">${e.name}</div>
-          <div class="ex-muscle">${muscleLabel}</div>
-        </div>
-        <span class="check">${added ? '✓' : '+'}</span>
-      </div>`;
-  }).join('');
-
-  updateExNextBtn();
-}
-
-function toggleExercise(id, name) {
-  const muscleGroupIds = S.exercises.find(e => e.id === id)?.muscleGroupIds || [];
-  const idx = S.workoutExercises.findIndex(e => e.id === id);
-  if (idx > -1) {
-    if (S.workoutExercises[idx].sets.length > 0) {
-      if (!confirm(`Remove "${name}"? It has ${S.workoutExercises[idx].sets.length} set(s) logged.`)) return;
-    }
-    S.workoutExercises.splice(idx, 1);
-    if (S.activeExIdx >= S.workoutExercises.length) S.activeExIdx = Math.max(0, S.workoutExercises.length - 1);
-  } else {
-    S.workoutExercises.push({ id, name, muscleGroupIds, sets: [] });
-    S.activeExIdx = S.workoutExercises.length - 1;
-  }
-  renderExerciseList();
-  updateExNextBtn();
-}
-
-function updateExNextBtn() {
-  const btn = document.getElementById('ex-next-btn');
-  btn.style.display = S.workoutExercises.length > 0 ? 'block' : 'none';
-  const n = S.workoutExercises.length;
-  btn.textContent = n > 0
-    ? `Start Logging (${n} exercise${n !== 1 ? 's' : ''}) →`
-    : 'Start Logging →';
-}
-
-function addMoreExercises() {
-  // Allow any muscle group, not just previously selected
-  showView('view-muscles');
-}
-
-// ════════════════════════════════════════════════════
-//  ACTIVE WORKOUT
-// ════════════════════════════════════════════════════
-// Override showView to trigger render when entering workout
-const _baseShowView = showView;
-function showView(id) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  window.scrollTo(0, 0);
-  if (id === 'view-workout') renderWorkout();
-  if (id === 'view-history') loadHistory();
-  if (id === 'view-home') updateHomeBanner();
-  if (id === 'view-exercises') renderExerciseList();
-}
-
-function renderWorkout() {
-  if (S.workoutExercises.length === 0) { showView('view-muscles'); return; }
-  if (S.activeExIdx >= S.workoutExercises.length) S.activeExIdx = S.workoutExercises.length - 1;
-
-  const ex = S.workoutExercises[S.activeExIdx];
-
-  // Header
-  document.getElementById('workout-header-name').textContent =
-    fmtDateShort(new Date());
-  const totalSets = S.workoutExercises.reduce((t, e) => t + e.sets.length, 0);
-  document.getElementById('meta-exercises').textContent = S.workoutExercises.length;
-  document.getElementById('meta-sets').textContent = totalSets;
-  document.getElementById('meta-status').textContent =
-    S.notionWorkoutId ? '✓ Synced' : (S.saving ? 'Saving…' : '');
-
-  // Tabs
-  const tabs = document.getElementById('ex-tabs');
-  tabs.innerHTML = S.workoutExercises.map((e, i) => `
-    <button class="ex-tab ${i === S.activeExIdx ? 'active' : 'inactive'}" onclick="switchEx(${i})">
-      ${e.name}
-      ${e.sets.length > 0 ? `<span class="tab-count">${e.sets.length}</span>` : ''}
-    </button>`).join('');
-
-  // Scroll active tab into view
-  setTimeout(() => {
-    const activeTab = tabs.querySelector('.ex-tab.active');
-    if (activeTab) activeTab.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
-  }, 50);
-
-  // Pre-fill from last set of this exercise
-  if (ex.sets.length > 0) {
-    const last = ex.sets[ex.sets.length - 1];
-    S.weight = last.weight;
-    S.reps = last.reps;
-  }
-
-  // Panel
-  const panel = document.getElementById('workout-panel');
-  panel.innerHTML = `
-    <div class="ex-label">Now logging</div>
-    <div class="ex-name-large">${ex.name}</div>
-    <div class="set-badge">Set ${ex.sets.length + 1}</div>
-
-    <div class="stepper-card">
-      <div class="stepper-label">Weight (kg)</div>
-      <div class="stepper">
-        <button class="step-btn minus" onclick="adj('weight', -2.5)">−</button>
-        <div class="step-display" onclick="editValue('weight')">
-          <div class="step-value" id="w-val">${S.weight}</div>
-          <div class="step-unit">tap to type</div>
-        </div>
-        <button class="step-btn plus" onclick="adj('weight', 2.5)">+</button>
-      </div>
-      <div class="step-fine">
-        <button class="step-btn minus sm" onclick="adj('weight', -0.5)">−½</button>
-        <button class="step-btn plus sm" onclick="adj('weight', 0.5)">+½</button>
-      </div>
-    </div>
-
-    <div class="stepper-card">
-      <div class="stepper-label">Reps</div>
-      <div class="stepper">
-        <button class="step-btn minus" onclick="adj('reps', -1)">−</button>
-        <div class="step-display" onclick="editValue('reps')">
-          <div class="step-value" id="r-val">${S.reps}</div>
-          <div class="step-unit">tap to type</div>
-        </div>
-        <button class="step-btn plus" onclick="adj('reps', 1)">+</button>
-      </div>
-    </div>
-
-    <div class="sets-area">
-      <div class="sets-title">Sets logged this session</div>
-      <div class="sets-grid" id="sets-grid">${renderSetPills(ex)}</div>
-    </div>`;
-}
-
-function switchEx(idx) {
-  S.activeExIdx = idx;
-  renderWorkout();
-}
-
-function adj(field, delta) {
-  if (field === 'weight') {
-    S.weight = Math.max(0, Math.round((S.weight + delta) * 10) / 10);
-    const el = document.getElementById('w-val');
-    if (el) el.textContent = S.weight;
-  } else {
-    S.reps = Math.max(1, S.reps + delta);
-    const el = document.getElementById('r-val');
-    if (el) el.textContent = S.reps;
-  }
-}
-
-function editValue(field) {
-  const cur = field === 'weight' ? S.weight : S.reps;
-  const unit = field === 'weight' ? 'kg' : 'reps';
-  const val = prompt(`Enter ${unit}:`, cur);
-  if (val === null) return;
-  const num = parseFloat(val);
-  if (isNaN(num) || num < 0) return;
-  if (field === 'weight') {
-    S.weight = Math.round(num * 10) / 10;
-    const el = document.getElementById('w-val');
-    if (el) el.textContent = S.weight;
-  } else {
-    S.reps = Math.round(num);
-    const el = document.getElementById('r-val');
-    if (el) el.textContent = S.reps;
-  }
-}
-
-function renderSetPills(ex) {
-  if (ex.sets.length === 0)
-    return '<div style="color:#444; font-size:13px; margin-top:4px;">No sets yet — log your first one above</div>';
-  return ex.sets.map((s, i) => `
-    <div class="set-pill ${i === ex.sets.length - 1 ? 'fresh' : ''}">
-      <span class="sn">S${i + 1}</span>
-      <span>${s.weight}kg × ${s.reps}</span>
-    </div>`).join('');
-}
-
-async function logSet() {
-  const ex = S.workoutExercises[S.activeExIdx];
-  const setNum = ex.sets.length + 1;
-  const setData = { setNum, weight: S.weight, reps: S.reps, notionId: null };
-  ex.sets.push(setData);
-
-  // Update set counter badge and pills immediately
-  renderWorkout();
-  toast(`Set ${setNum}: ${S.weight}kg × ${S.reps} ✓`);
-
-  // Create workout in Notion on first set
-  if (!S.notionWorkoutId && S.notionConnected) {
-    try {
-      const wk = await api('create-workout', 'POST', {
-        date: new Date().toISOString().split('T')[0],
-        exerciseNames: S.workoutExercises.map(e => e.name),
-      });
-      S.notionWorkoutId = wk.id;
-      document.getElementById('meta-status').textContent = '✓ Synced';
-    } catch (e) {
-      console.warn('Could not create workout in Notion:', e);
-    }
-  }
-
-  // Save set to Notion
-  if (S.notionWorkoutId) {
-    try {
-      const res = await api('create-set', 'POST', {
-        workoutId: S.notionWorkoutId,
-        exerciseId: ex.id,
-        exerciseName: ex.name,
-        setNum,
-        weight: S.weight,
-        reps: S.reps,
-      });
-      setData.notionId = res.id;
-    } catch (e) {
-      console.warn('Could not save set to Notion:', e);
-    }
-  }
-}
-
-// ════════════════════════════════════════════════════
-//  FINISH WORKOUT
-// ════════════════════════════════════════════════════
-function confirmFinish() {
-  const totalSets = S.workoutExercises.reduce((t, e) => t + e.sets.length, 0);
-  if (totalSets === 0) {
-    if (confirm('No sets logged. Discard workout?')) { resetAndGoHome(); }
-    return;
-  }
-  buildFinishView();
-  showView('view-finish');
-}
-
-function buildFinishView() {
-  const totalSets = S.workoutExercises.reduce((t, e) => t + e.sets.length, 0);
-  const exWithSets = S.workoutExercises.filter(e => e.sets.length > 0);
-
-  document.getElementById('finish-sub').textContent =
-    `${exWithSets.length} exercise${exWithSets.length !== 1 ? 's' : ''} · ${totalSets} sets`;
-
-  document.getElementById('finish-summary').innerHTML = exWithSets.map(ex => `
-    <div class="summary-exercise card card-sm" style="margin-bottom:10px;">
-      <div class="summary-ex-name">${ex.name}</div>
-      <div class="summary-sets">
-        ${ex.sets.map((s, i) => `
-          <div class="summary-pill">S${i + 1}: ${s.weight}kg × ${s.reps}</div>`).join('')}
-      </div>
-    </div>`).join('');
-
-  const saveBtn = document.getElementById('save-btn');
-  if (S.notionWorkoutId) {
-    saveBtn.textContent = '✓ Already Saved to Notion';
-    saveBtn.disabled = true;
-    saveBtn.style.background = '#4caf50';
-  } else {
-    saveBtn.textContent = 'Save to Notion';
-    saveBtn.disabled = false;
-    saveBtn.style.background = '';
-  }
-}
-
-async function saveToNotion() {
-  if (S.saving || S.notionWorkoutId) return;
-  S.saving = true;
-
-  const btn = document.getElementById('save-btn');
-  btn.textContent = 'Saving…';
-  btn.disabled = true;
-
-  try {
-    const wk = await api('create-workout', 'POST', {
-      date: new Date().toISOString().split('T')[0],
-      exerciseNames: S.workoutExercises.map(e => e.name),
-    });
-    S.notionWorkoutId = wk.id;
-
-    for (const ex of S.workoutExercises) {
-      for (const set of ex.sets) {
-        await api('create-set', 'POST', {
-          workoutId: S.notionWorkoutId,
-          exerciseId: ex.id,
-          exerciseName: ex.name,
-          setNum: set.setNum,
-          weight: set.weight,
-          reps: set.reps,
-        });
-      }
-    }
-
-    btn.textContent = '✓ Saved!';
-    btn.style.background = '#4caf50';
-    toast('Saved to Notion 💪');
-  } catch (e) {
-    btn.textContent = 'Retry';
-    btn.disabled = false;
-    S.saving = false;
-    toast('Save failed — check your connection');
-  }
-}
-
-function resetAndGoHome() {
-  S.workoutExercises = [];
-  S.notionWorkoutId = null;
-  S.saving = false;
-  S.selectedMuscles = [];
-  showView('view-home');
-}
-
-// ════════════════════════════════════════════════════
-//  HISTORY
-// ════════════════════════════════════════════════════
-function goToHistory() {
-  showView('view-history');
-}
-
-async function loadHistory() {
-  const content = document.getElementById('history-content');
-  content.innerHTML = '<div class="loading-state"><div class="spinner"></div> Loading…</div>';
-  try {
-    const workouts = await api('recent-workouts');
-    if (!workouts.length) {
-      content.innerHTML = '<div class="empty"><div class="icon">📋</div>No workouts logged yet</div>';
-      return;
-    }
-    content.innerHTML = workouts.map(w => `
-      <div class="card history-item" style="margin-bottom:10px;" onclick="openWorkoutDetail('${w.id}', \`${esc(w.name)}\`, '${w.date}')">
-        <div class="h-row">
-          <div>
-            <div class="h-name">${w.name}</div>
-            <div class="h-meta">${fmtDateFromStr(w.date)}</div>
-          </div>
-          <span class="h-arrow">›</span>
-        </div>
-      </div>`).join('');
-  } catch (e) {
-    content.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Could not load history</div>';
-  }
-}
-
-async function openWorkoutDetail(workoutId, name, date) {
-  // Show the detail view immediately with a loading state
-  document.getElementById('detail-title').textContent = name;
-  document.getElementById('detail-sub').textContent = fmtDateFromStr(date);
-  document.getElementById('detail-content').innerHTML =
-    '<div class="loading-state"><div class="spinner"></div> Loading sets…</div>';
-  document.getElementById('detail-bottom').style.display = 'none';
-  showView('view-detail');
-
-  try {
-    const detail = await api(`workout-detail&workoutId=${workoutId}`);
-    S.detailWorkout = detail;
-    renderWorkoutDetail(detail);
-  } catch (e) {
-    document.getElementById('detail-content').innerHTML =
-      '<div class="empty"><div class="icon">⚠️</div>Could not load workout details</div>';
-  }
-}
-
-function renderWorkoutDetail(detail) {
-  const content = document.getElementById('detail-content');
-
-  if (!detail.exercises || detail.exercises.length === 0) {
-    content.innerHTML = '<div class="empty"><div class="icon">🏋️</div>No sets recorded for this workout</div>';
-    return;
-  }
-
-  const totalSets = detail.exercises.reduce((t, ex) => t + ex.sets.length, 0);
-
-  // Show resume warning if there's already an active workout
-  const warnHtml = (S.workoutExercises.length > 0 && !S.notionWorkoutId)
-    ? '<div class="resume-warn">⚠️ You have an unsaved workout in progress. Continuing this one will replace it.</div>'
-    : '';
-
-  content.innerHTML = warnHtml + detail.exercises.map(ex => {
-    const setHtml = ex.sets.map((s, i) => `
-      <div class="set-pill">
-        <span class="sn">S${s.setNum}</span>
-        <span>${s.weight}kg × ${s.reps}</span>
-      </div>`).join('');
-
-    const maxWeight = Math.max(...ex.sets.map(s => s.weight));
-    const maxReps   = ex.sets.find(s => s.weight === maxWeight)?.reps ?? 0;
-
-    return `
-      <div class="detail-exercise card card-sm">
-        <div class="detail-ex-name">${ex.name}</div>
-        <div class="sets-grid">${setHtml}</div>
-        <div class="detail-ex-total">${ex.sets.length} set${ex.sets.length !== 1 ? 's' : ''} · top set: ${maxWeight}kg × ${maxReps}</div>
-      </div>`;
-  }).join('');
-
-  // Show continue button
-  document.getElementById('detail-bottom').style.display = 'flex';
-}
-
-function resumeWorkout() {
-  if (!S.detailWorkout) return;
-
-  // Warn if unsaved active workout will be lost
-  if (S.workoutExercises.length > 0 && !S.notionWorkoutId) {
-    if (!confirm('You have an unsaved workout in progress. Replace it with this one?')) return;
-  }
-
-  // Reconstruct workout state from the detail
-  S.workoutExercises = S.detailWorkout.exercises.map(ex => {
-    const loadedEx = S.exercises.find(e => e.id === ex.id) || {};
-    return {
-      id: ex.id,
-      name: ex.name,
-      muscleGroupIds: loadedEx.muscleGroupIds || [],
-      sets: ex.sets.map(s => ({
-        setNum: s.setNum,
-        weight: s.weight,
-        reps: s.reps,
-        notionId: s.notionId,
-      })),
-    };
-  });
-
-  S.notionWorkoutId = S.detailWorkout.id;
-  S.activeExIdx = 0;
-  S.saving = false;
-
-  // Pre-fill steppers from last set of first exercise
-  if (S.workoutExercises[0]?.sets.length > 0) {
-    const last = S.workoutExercises[0].sets[S.workoutExercises[0].sets.length - 1];
-    S.weight = last.weight;
-    S.reps = last.reps;
-  }
-
-  toast('Resumed — carry on! 💪');
-  showView('view-workout');
-}
-
-// ════════════════════════════════════════════════════
-//  API
-// ════════════════════════════════════════════════════
-async function api(action, method = 'GET', body = null) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(`/api/notion?action=${action}`, opts);
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${res.status}: ${err}`);
-  }
-  return res.json();
-}
-
-// ════════════════════════════════════════════════════
-//  UTILS
-// ════════════════════════════════════════════════════
-function fmtDate(d) {
-  return d.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-}
-function fmtDateShort(d) {
-  return d.toLocaleDateString('en-AU', { weekday: 'short', month: 'short', day: 'numeric' });
-}
-function fmtDateFromStr(s) {
-  if (!s) return '';
-  return new Date(s + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-}
-function esc(s) {
-  return s.replace(/`/g, '\\`').replace(/\$/g, '\\$');
-}
-let toastTimer;
-function toast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
-}
-
-// ════════════════════════════════════════════════════
-//  FALLBACK DATA — real Notion IDs baked in
-//  Used when the app is opened locally (no API server)
-//  On Vercel, live data is loaded from Notion instead
-// ════════════════════════════════════════════════════
-const FALLBACK_MUSCLES = [
-  { id: '1ddf1256-1537-8152-bbb6-d6ed6b844036', name: 'Chest' },
-  { id: '1ddf1256-1537-8174-8012-f8d0a890e0c3', name: 'Back' },
-  { id: '1ddf1256-1537-81e1-9b3d-c1d4ff8a0acd', name: 'Shoulders' },
-  { id: '1ddf1256-1537-8159-a5f5-de79b6c04242', name: 'Biceps' },
-  { id: '1ddf1256-1537-81bf-b594-f38258595988', name: 'Triceps' },
-  { id: '1ddf1256-1537-81ba-8450-d59b9234be7d', name: 'Quadriceps' },
-  { id: '1ddf1256-1537-8185-bbf4-dcdbb2129aef', name: 'Hamstrings' },
-  { id: '31bf1256-1537-814b-a14c-faa4d0715853', name: 'Calves' },
-  { id: '31bf1256-1537-81e3-8e93-d699124e0952', name: 'Traps' },
-  { id: '1ddf1256-1537-81cc-837d-e8a211cd9542', name: 'Abs' },
-];
-
-// Shorthand for muscle group IDs
-const MG = {
-  CHEST:  '1ddf1256-1537-8152-bbb6-d6ed6b844036',
-  BACK:   '1ddf1256-1537-8174-8012-f8d0a890e0c3',
-  SHOUL:  '1ddf1256-1537-81e1-9b3d-c1d4ff8a0acd',
-  BICEP:  '1ddf1256-1537-8159-a5f5-de79b6c04242',
-  TRICEP: '1ddf1256-1537-81bf-b594-f38258595988',
-  QUADS:  '1ddf1256-1537-81ba-8450-d59b9234be7d',
-  HAMS:   '1ddf1256-1537-8185-bbf4-dcdbb2129aef',
-  CALVES: '31bf1256-1537-814b-a14c-faa4d0715853',
-  TRAPS:  '31bf1256-1537-81e3-8e93-d699124e0952',
-  ABS:    '1ddf1256-1537-81cc-837d-e8a211cd9542',
-};
-
-const FALLBACK_EXERCISES = [
-  // ── Chest ─────────────────────────────────────────────────────────────────
-  { id: '1ddf1256-1537-81a0-8f02-fdf127fe73b1', name: 'Bench Press',                         muscleGroupIds: [MG.CHEST] },
-  { id: '31bf1256-1537-8190-b757-feb59fdf90ea', name: 'Incline Dumbbell Press',               muscleGroupIds: [MG.CHEST] },
-  { id: '31bf1256-1537-8143-b4c0-fbd14b516897', name: 'Incline Dumbbell Flye',               muscleGroupIds: [MG.CHEST] },
-  { id: '31bf1256-1537-81c1-9b8e-f2ed41b12c11', name: 'Deficit Push-Ups',                    muscleGroupIds: [MG.CHEST] },
-  // ── Back ──────────────────────────────────────────────────────────────────
-  { id: '31bf1256-1537-81ab-a630-c9f9c9ad5d39', name: 'Seated Cable Row',                    muscleGroupIds: [MG.BACK] },
-  { id: '31bf1256-1537-81c0-8fef-d66d771afcf4', name: 'Standing Pulldown',                   muscleGroupIds: [MG.BACK] },
-  { id: '31bf1256-1537-81fc-b0cf-eff533ed161d', name: 'Straight Arm Pulldown',               muscleGroupIds: [MG.BACK] },
-  { id: '31bf1256-1537-814f-93f8-fc5b558877c3', name: 'Behind-Neck Pulldown',                muscleGroupIds: [MG.BACK] },
-  { id: '31bf1256-1537-811c-9b0d-d9cb71ec339b', name: 'Wide-Grip Pulldown',                  muscleGroupIds: [MG.BACK] },
-  { id: '31bf1256-1537-8110-a3f5-d98f7b517d3d', name: 'Reverse-Grip Pulldown',               muscleGroupIds: [MG.BACK] },
-  // ── Shoulders ─────────────────────────────────────────────────────────────
-  { id: '31bf1256-1537-81a6-bcc8-f004d96f0857', name: 'Dumbbell Shoulder Press',             muscleGroupIds: [MG.SHOUL] },
-  { id: '1ddf1256-1537-8073-80cd-e343d0bf987d', name: 'Dumbbell Lateral Raise',              muscleGroupIds: [MG.SHOUL] },
-  { id: '31bf1256-1537-81f3-85a1-ffc8360febd8', name: 'High Cable Rear Delt Fly',            muscleGroupIds: [MG.SHOUL] },
-  { id: '31bf1256-1537-8171-b293-eb853ef6a73f', name: 'Bent-Over Lateral Raise',             muscleGroupIds: [MG.SHOUL] },
-  { id: '31bf1256-1537-817d-8398-c7df9f7e59e4', name: 'One-Arm Cable Lateral Raise',         muscleGroupIds: [MG.SHOUL] },
-  { id: '31bf1256-1537-81c2-b6c3-ea67498fb706', name: 'Dumbbell Upright Row',                muscleGroupIds: [MG.SHOUL] },
-  // ── Biceps ────────────────────────────────────────────────────────────────
-  { id: '31bf1256-1537-814c-bdc5-f3576f74924f', name: 'Barbell Curl',                        muscleGroupIds: [MG.BICEP] },
-  { id: '31bf1256-1537-81b7-971c-ed526b5edd90', name: 'Incline Cable Curl',                  muscleGroupIds: [MG.BICEP] },
-  { id: '31bf1256-1537-8129-a995-e62329ebb013', name: 'Preacher Curl',                       muscleGroupIds: [MG.BICEP] },
-  { id: '31bf1256-1537-8130-afee-f73493f3e8a4', name: 'Behind-Back Cable Curl',              muscleGroupIds: [MG.BICEP] },
-  { id: '31bf1256-1537-812c-a31a-e9098970bc49', name: 'One-Arm High Cable Curl',             muscleGroupIds: [MG.BICEP] },
-  { id: '31bf1256-1537-8126-af98-cfb8a5bd4051', name: 'Dumbbell Concentration Curl',         muscleGroupIds: [MG.BICEP] },
-  { id: '31bf1256-1537-81d5-ab71-f2c5fc74ba47', name: 'Dumbbell Incline Curl',               muscleGroupIds: [MG.BICEP] },
-  // ── Triceps ───────────────────────────────────────────────────────────────
-  { id: '31bf1256-1537-8138-b0cb-e7deda68454b', name: 'Triceps Pressdown',                   muscleGroupIds: [MG.TRICEP] },
-  { id: '31bf1256-1537-81ca-96e8-c6633020b6f4', name: 'Close-Grip Bench Press',              muscleGroupIds: [MG.TRICEP] },
-  { id: '31bf1256-1537-81e7-951f-d1c2d21d9376', name: 'Dumbbell Overhead Triceps Extension', muscleGroupIds: [MG.TRICEP] },
-  { id: '31bf1256-1537-811c-8494-f31c37854290', name: 'Lying Triceps Extension',             muscleGroupIds: [MG.TRICEP] },
-  { id: '31bf1256-1537-81f3-ac62-c60dbcac9386', name: 'Cable Overhead Triceps Extension',    muscleGroupIds: [MG.TRICEP] },
-  { id: '31bf1256-1537-8134-917d-e7f4c5aafc35', name: 'Cable Lying Triceps Extension',       muscleGroupIds: [MG.TRICEP] },
-  { id: '31bf1256-1537-8120-a442-e224ed6ab337', name: 'One-Arm Overhead Cable Triceps Ext',  muscleGroupIds: [MG.TRICEP] },
-  // ── Quadriceps ────────────────────────────────────────────────────────────
-  { id: '31bf1256-1537-81eb-aa67-e770a73e1d51', name: 'Squat',                               muscleGroupIds: [MG.QUADS] },
-  { id: '31bf1256-1537-81b1-af0a-c1d67f07bbd2', name: 'Leg Press',                           muscleGroupIds: [MG.QUADS] },
-  { id: '31bf1256-1537-81ed-bb3c-ed21696f25ae', name: 'Front Squat',                         muscleGroupIds: [MG.QUADS] },
-  { id: '31bf1256-1537-816c-918b-ebda257a2e28', name: 'One-Leg Leg Press',                   muscleGroupIds: [MG.QUADS] },
-  // ── Hamstrings ────────────────────────────────────────────────────────────
-  { id: '31bf1256-1537-810c-a49a-e67eb6aa956a', name: 'Romanian Deadlift',                   muscleGroupIds: [MG.HAMS] },
-  { id: '31bf1256-1537-811d-9b62-f6c946604c96', name: 'Seated Leg Curl',                     muscleGroupIds: [MG.HAMS] },
-  { id: '31bf1256-1537-8110-93af-eb3177216746', name: 'Lying Leg Curl',                      muscleGroupIds: [MG.HAMS] },
-  // ── Calves ────────────────────────────────────────────────────────────────
-  { id: '31bf1256-1537-81aa-a388-f3066270b139', name: 'Standing Calf Raise',                 muscleGroupIds: [MG.CALVES] },
-  { id: '1ddf1256-1537-8056-8738-d1cb607398f2', name: 'Seated Calf Raise',                   muscleGroupIds: [MG.CALVES] },
-  // ── Traps ─────────────────────────────────────────────────────────────────
-  { id: '31bf1256-1537-8193-9ca5-fc5b8e9ca4f6', name: 'Barbell Shrug',                       muscleGroupIds: [MG.TRAPS] },
-  { id: '31bf1256-1537-813d-b9e4-f7438146f59c', name: 'Dumbbell Shrug',                      muscleGroupIds: [MG.TRAPS] },
-  // ── Abs ───────────────────────────────────────────────────────────────────
-  { id: '31bf1256-1537-8186-bc24-ec62715960b5', name: 'Weighted Crunch',                     muscleGroupIds: [MG.ABS] },
-  { id: '31bf1256-1537-817a-b762-c8d2a2fb7ad6', name: 'Hanging Leg Raise',                   muscleGroupIds: [MG.ABS] },
-  { id: '31bf1256-1537-81cd-b51e-e0ff422a86ae', name: 'Dumbbell Side Bend',                  muscleGroupIds: [MG.ABS] },
-  { id: '31bf1256-1537-81e0-bf12-f0a910e12085', name: 'Crunch',                              muscleGroupIds: [MG.ABS] },
-  { id: '31bf1256-1537-81c6-8228-f04badbd94c3', name: 'Oblique Crunch',                      muscleGroupIds: [MG.ABS] },
-];
-</script>
-</body>
-</html>
+<!-- �QU��8�%UT��Hԓ�T�SP�Sӂ��d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�dKO��]�YH��Y]�[]\��\Ȉ�\��H��Y]ȏ��]��\��H�XY\�����]ۈ�\��H��X��X���ۘ�X��H���՚Y]�	ݚY]�Z�YI�H�����X��؝]ۏ��O�]\��Hܛ�\��O��]��\��H�XY\�\�X���X���][�IܙH�Z[�[���^O�]����]���]��\��H��۝[����]�YH��Y[��[]\��\Ȉ�\��H��Y[��\�]H��]��\��H��[��\����]���Y[���)��]���]�YH�]\��KYܚY��\��H�]\��KYܚY��[OH�\�^N��ۙNȏ��]����]���]��\��H����KX�\�����]ۈ�\��H�����\�[X\�H�YH�]\��\�[�^X���ۘ�X��H����^\��\�\�
+H�\�X�Y��^�X��^\��\�\�8���؝]ۏ���]����]�����KKH8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d��QU��8�%VT��T�H�SP�Sӂ��d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�dKO��]�YH��Y]�Y^\��\�\Ȉ�\��H��Y]ȏ��]��\��H�XY\�����]ۈ�\��H��X��X���ۘ�X��H���՚Y]�	ݚY]�[]\��\��H�����X��؝]ۏ��HYH�^]�Y]�]]H��^\��\�\��O��]��\��H�XY\�\�X��YH�^]�Y]�\�X���\�Y��^I���ܚ��]�]����]���]��\��H��۝[����]�YH�^\��\�K[\����]����]���]��\��H����KX�\�����]ۈ�\��H�����\�[X\�H�YH�^[�^X���ۘ�X��H���՚Y]�	ݚY]�]�ܚ��]	�H��[OH�\�^N��ۙNȏ��\����[��8���؝]ۏ���]����]�����KKH8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d��QU�
+8�%P�U�H�Ԓ��U��d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�dKO��]�YH��Y]�]�ܚ��]��\��H��Y]ȏ��]��\��H�XY\���[OH�Y[��X���N���ܙ\�X���N��ۙNȏ��]��[OH�\�^N��^�[YۋZ][\Θ�[�\���\�Y�KX�۝[���X�KX�]�Y[��X\��[�X���N�ȏ��]�YH��ܚ��]ZXY\�[�[YH��[OH��۝\�^�N�N��۝]�ZY���ȏ��]����]ۈ�\��H�����Y[��\���[OH��Y�]]��Y[�ΎM��۝\�^�N�L���ܙ\�\�Y]\ΌLȈۘ�X��H��ۙ�\�Q�[�\�
+
+H���[�\�؝]ۏ���]���]��\��H��ܚ��][Y]H��[OH�X\��[��LM��Y[�ΌLM�ȏ��]��\��H�Y]KZ][H����ۙ�YH�Y]KY^\��\�\ȏ����ۙψ^\��\�\��]���]��\��H�Y]KZ][H����ۙ�YH�Y]K\�]ȏ����ۙψ�]��]���]��\��H�Y]KZ][H�YH�Y]K\�]\Ȉ�[OH�X\��[�[Y��]]����܎�ٙ����N��۝\�^�N�L�ȏ��]����]����]����KKH^\��\�HX��
+�ܛ�X�JHKO��]��\��H�^]X�ȈYH�^]X�ȏ��]����KKHX�]�H^\��\�H[�[KO��]��\��H��۝[��YH��ܚ��]X�۝[����]�YH��ܚ��]\[�[���]����]����]��\��H����KX�\�����]ۈ�\��H�����\�[X\�H�YH���\�]X���ۘ�X��H����]
+
+H�����U؝]ۏ��]��\��H���\��ȏ���]ۈ�\��H�����\�X�ۙ\�H�ۘ�X��H�Y[ܙQ^\��\�\�
+H���Y^\��\�O؝]ۏ���]ۈ�\��H�����\�X�ۙ\�H�ۘ�X��H��ۙ�\�Q�[�\�
+
+H��[OH��ܙ\�X��܎�ٙ�
+
+
+���܎�ٙ�
+
+
+ȏ��[�\�؝]ۏ���]����]����]�����KKH8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d��QU�
+H8�%�S�T���SSPT�B��d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�dKO��]�YH��Y]�Y�[�\���\��H��Y]ȏ��]��\��H��۝[���[OH��\�Y�KX�۝[���[�\�ȏ��]��[OH�Y[��]���ȏ��]��\��H��[�\�ZX�ۈ�YH��[�\�ZX�ۈ��'�O�]���]��\��H��[�\�]]H���ܚ��]ۙHO�]���]��\��H��[�\�\�X��YH��[�\�\�X����]����]��\��H�]�Y\����]���]��\��H��X�[ۋ]]H���[[X\�O�]���]�YH��[�\�\�[[X\�H���]����]����]���]��\��H����KX�\�����]ۈ�\��H�����\�[X\�H�YH��]�KX���ۘ�X��H��]�Uӛ�[ۊ
+H���]�H���[ۏ؝]ۏ���]ۈ�\��H�����\�X�ۙ\�H�ۘ�X��H��\�][����YJ
+H��ۙO؝]ۏ���]����]�����KKH8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d��QU�
+�8�%T�ԖB��d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�dKO��]�YH��Y]�Z\�ܞH��\��H��Y]ȏ��]��\��H�XY\�����]ۈ�\��H��X��X���ۘ�X��H���՚Y]�	ݚY]�Z�YI�H�����X��؝]ۏ��O�\�ܞO�O���]���]��\��H��۝[��YH�\�ܞKX�۝[����]��\��H��Y[��\�]H��]��\��H��[��\����]���Y[���)��]����]����]�����KKH8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d��QU�
+�8�%�Ԓ��UURS��d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�dKO��]�YH��Y]�Y]Z[��\��H��Y]ȏ��]��\��H�XY\�����]ۈ�\��H��X��X���ۘ�X��H���՚Y]�	ݚY]�Z\�ܞI�H����\�ܞO؝]ۏ��HYH�]Z[]]H���ܚ��]�O��]��\��H�XY\�\�X��YH�]Z[\�X����]����]���]��\��H��۝[��YH�]Z[X�۝[����]��\��H��Y[��\�]H��]��\��H��[��\����]���Y[���)��]����]���]��\��H����KX�\��YH�]Z[X���H��[OH�\�^N��ۙNȏ���]ۈ�\��H�����\�[X\�H�ۘ�X��H��\�[YU�ܚ��]
+
+H����H�۝[�YH\��ܚ��]؝]ۏ���]����]�����KKHX�[ۈ�Y]
+[]K��[ۜ��܈\�ܞH][\�HKO��]��\��H�X�[ۋ[ݙ\�^H�YH�X�[ۋ[ݙ\�^H�ۘ�X��H����PX�[۔�Y]
+]�[�
+H���]��\��H�X�[ۋ\�Y]���]��\��H�X�[ۋ\�Y]]]H�YH�X�[ۋ\�Y]]]H���ܚ��]�]����]ۈ�\��H�X�[ۋX��[��\��ۘ�X��H��ۙ�\�Q[]U�ܚ��]
+
+H��'��H[]H�ܚ��]؝]ۏ���]ۈ�\��H�X�[ۋX���[��[�ۘ�X��H�YPX�[۔�Y]
+
+H���[��[؝]ۏ���]����]����KKH�\�KO��]��\��H��\��YH��\����]������ܚ\����8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d����UB���8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d��ۜ��H]\��Qܛ�\Έ�K�^\��\�\Έ�K��YY��[�K����\��[��ܚ��]��[X�Y]\��\Έ�K��ܚ��]^\��\�\Έ�K����Y�[YK]\��Qܛ�\Y��]Ζ���]�[K�ZY��\���[ےYWHWB�X�]�Q^Y�����\\��]B��ZY�����\ΈL�\Л�]�ZY���[�K���ZY�H��]�ZY�
+�ܙY\��[
+B��ZY��N��[�K���YH�[���[�HS���^�H�ZY���\ӐN��[�K���\�X\��Y\���H
+[YKX�\�Y�
+B��X�ۙΈ����[YH[��X�ۙ����[ۈ�]B���[ە�ܚ��]Y��[��]�[�Έ�[�K���[ې�ۛ�X�Y��YK���\�ܞH]Z[�]Z[�ܚ��]��[�X�[ە�ܚ��]��[���Y�[YHH�܈HX�[ۈ�Y]�N���8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d���UT��HSSҒT��8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d��ۜ�UT��W�SSҒHH	��\�	Έ	�'��I�	ИX��Έ	�'����#��	���[\��Έ	�'䪉�	КX�\�Έ	�'䪉��	��X�\�Έ	�'䪉�	�]XY�X�\�Έ	�'�I�	�[\��[���Έ	�'�I�	��[�\�Έ	�'�I��	��\�Έ	�'�,I�	�X��Έ	���I�	��ܙIΈ	���I�	��]\�Έ	�'�dI��N���8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d���S�U���8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d���[Y[��Y]�[�\�[�\�	��P�۝[��YY	�
+
+HO���[Y[���][[Y[��RY
+	��YKY]I�K�^�۝[�H�]]J�]�]J
+JN�Y]J
+NJN�\�[���[��[ۈ�Y]J
+H�H�ۜ��]\��\�^\��\�\�HH]�Z]��Z\�K�[
+\J	�]\��KYܛ�\��K�\J	�^\��\�\��K�JN˛]\��Qܛ�\�H]\��\�˙^\��\�\�H^\��\�\�˛�YYH�YN˛��[ې�ۛ�X�YH�YN��[Y[���][[Y[��RY
+	��]\X�[��\��K��[K�\�^HH	ۛۙI�H�]�
+JH�ۜ��K��\��	���[���Y���H��[ێ��K�Y\��Y�JN˛��[ې�ۛ�X�YH�[�N��[Y[���][[Y[��RY
+	��]\X�[��\��K��[K�\�^HH	؛������ܘX�Y�[�[�X�˛]\��Qܛ�\�H�S�P���UT��T�˙^\��\�\�H�S�P���VT��T�T�˛�YYH�YNB�B����8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d����U�Q�USӂ���8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d��[��[ۈ��՚Y]�Y
+H��[Y[��]Y\�T�[X�ܐ[
+	˝�Y]��K��ܑXX�
+�O����\��\���[[ݙJ	�X�]�I�JN��[Y[���][[Y[��RY
+Y
+K��\��\��Y
+	�X�]�I�N�[��˜�ܛ��
+NB����8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d����QB���8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d��[��[ۈ\]R�YP�[��\�
+H�ۜ��[��\�H��[Y[���][[Y[��RY
+	�X�]�KX�[��\��NY�
+˝�ܚ��]^\��\�\˛[���	��T˛��[ە�ܚ��]Y
+H�[��\���[K�\�^HH	؛������[Y[���][[Y[��RY
+	�X�[�[YI�K�^�۝[�B�˝�ܚ��]^\��\�\˛X\
+HO�K��[YJK���[�	�	�K��X���[��
+�
+N�ۜ��[�]�H˝�ܚ��]^\��\�\˜�YX�J
+JHO�
+�K��]˛[��
+N��[Y[���][[Y[��RY
+	�X�[Y]I�K�^�۝[�H	�˝�ܚ��]^\��\�\˛[��H^\��\�\�0��	��[�]�H�]����YH[�H�[��\���[K�\�^HH	ۛۙI�B�B��\�[���[��[ۈ�\��]��ܚ��]
+
+HY�
+T˛�YY
+H�\�
+	��Y[��]x�)��N]�Z]�Y]J
+NB�˜�[X�Y]\��\�H�N˝�ܚ��]^\��\�\�H�N˘X�]�Q^YH˛��[ە�ܚ��]YH�[˜�]�[��H�[�N�[�\�]\��QܚY
+
+N��՚Y]�	ݚY]�[]\��\��NB����8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d���UT��H�SP�Sӂ���8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d��[��[ۈ�[�\�]\��QܚY
+
+H�ۜ��Y[��H��[Y[���][[Y[��RY
+	��Y[��[]\��\��N�ۜ�ܚYH��[Y[���][[Y[��RY
+	�]\��KYܚY	�N��Y[�˜�[K�\�^HH	ۛۙI�ܚY��[K�\�^HH	�ܚY	���ۜ��[Y]\��\�H˛]\��Qܛ�\˙�[\�HO�K��[YH	��K��[YHOOH	ә]�]\��Hܛ�\	�NܚY�[��\�SH�[Y]\��\˛X\
+HO���]ۈ�\��H�]\��KX��	�˜�[X�Y]\��\˚[��Y\�K�Y
+H�	��[X�Y	��	��H��ۘ�X��H����S]\��J	��K�YI�H����[��\��H�[[ښH���UT��W�SSҒV�K��[YWH	�'䪉�O��[���	�K��[Y_B�؝]ۏ�
+K���[�	��N��ۜ���H��[Y[���][[Y[��RY
+	�]\��\�[�^X���N���\�X�YH˜�[X�Y]\��\˛[��OOHB���[��[ۈ���S]\��JY
+H�ۜ�YH˜�[X�Y]\��\˚[�^يY
+NY�
+Y�LJH˜�[X�Y]\��\˜�X�JYJN[�H˜�[X�Y]\��\˜\�
+Y
+N�[�\�]\��QܚY
+
+NB����8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d���VT��T�H�SP�Sӂ���8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d��[��[ۈ���^\��\�\�
+H�ۜ�]\��S�[Y\�H˜�[X�Y]\��\�X\
+YO�˛]\��Qܛ�\˙�[�
+HO�K�YOOHY
+O˛�[YJB���[\����X[�N��[Y[���][[Y[��RY
+	�^]�Y]�]]I�K�^�۝[�H]\��S�[Y\˚��[�	�0��	�N�[�\�^\��\�S\�
+
+N��՚Y]�	ݚY]�Y^\��\�\��NB���[��[ۈ�[�\�^\��\�S\�
+
+H�ۜ��[\�YH˙^\��\�\˙�[\�HO��K�]\��Qܛ�\Y˜��YJY�YO�˜�[X�Y]\��\˚[��Y\�Y�Y
+JB�
+N��ۜ�\�H��[Y[���][[Y[��RY
+	�^\��\�K[\�	�N�Y�
+�[\�Y�[��OOH
+H\��[��\�SH	�]��\��H�[\H��]��\��H�X�ۈ��'�#O�]����^\��\�\���[��܈\�H]\��Hܛ�\��]����]\��B��\��[��\�SH�[\�Y�X\
+HO��ۜ�YYH˝�ܚ��]^\��\�\˜��YJ�HO��K�YOOHK�Y
+N�ۜ�]\��SX�[HK�]\��Qܛ�\Y�X\
+YO�˛]\��Qܛ�\˙�[�
+HO�K�YOOHY
+O˛�[YJB���[\����X[�K���[�	�	�N�]\���]��\��H�^\��\�KZ][H	�YY�	�YY	��	��H�ۘ�X��H����Q^\��\�J	��K�YI�	�\��K��[YJ_W
+H���]���]��\��H�^[�[YH���K��[Y_O�]���]��\��H�^[]\��H���]\��SX�[O�]����]����[��\��H��X�ȏ��YY�	��$���	���O��[����]��JK���[�	��N�\]Q^�^��
+NB���[��[ۈ���Q^\��\�JY�[YJH�ۜ�]\��Qܛ�\Y�H˙^\��\�\˙�[�
+HO�K�YOOHY
+O˛]\��Qܛ�\Y��N�ۜ�YH˝�ܚ��]^\��\�\˙�[�[�^
+HO�K�YOOHY
+NY�
+Y�LJHY�
+˝�ܚ��]^\��\�\��YK��]˛[���
+HY�
+X�ۙ�\�J�[[ݙH�ۘ[Y_H��]\�	�˝�ܚ��]^\��\�\��YK��]˛[��H�]
+�H���Y�
+JH�]\��B�˝�ܚ��]^\��\�\˜�X�JYJNY�
+˘X�]�Q^Y�H�45B10v�$W�W&6�6W2��V�wF��2�7F�fTW��G���F������2�v�&��WDW�W&6�6W2��V�wF������V�6R��2�v�&��WDW�W&6�6W2�W6����B���R��W66�Tw&�W�G2�6WG3���ғ��2�7F�fTW��G��2�v�&��WDW�W&6�6W2��V�wF����Т&V�FW$W�W&6�6TƗ7B����WFFTW��W�D'Fₓ��Р�gV�7F���WFFTW��W�D'Fₒ��6��7B'F��F�7V�V�B�vWDV�V�V�D'��B�vW���W�B�'F�r���'F��7G��R�F�7���2�v�&��WDW�W&6�6W2��V�wF���v&��6�r�v���Rs��6��7B��2�v�&��WDW�W&6�6W2��V�wF���'F��FW�D6��FV�B��� ��7F'B��vv��r�G���W�W&6�6RG�����w2r�rwҒ(i& ��u7F'B��vv��r(i"s��Р�gV�7F���FD��&TW�W&6�6W2���������r��W66�Rw&�W���B�W7B&Wf��W6ǒ6V�V7FV@�6��uf�Wr�wf�Wr��W66�W2r���Р���)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y ���5D�dRt�$��U@���)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y ����fW'&�FR6��uf�WrF�G&�vvW"&V�FW"v�V�V�FW&��rv�&��W@�6��7B�&6U6��uf�Wr�6��uf�Ws��gV�7F���6��uf�Wr��B���F�7V�V�B�VW'�6V�V7F�$�r�f�Wrr��f�$V6��b��b�6�74Ɨ7B�&V��fR�v7F�fRr����F�7V�V�B�vWDV�V�V�D'��B��B��6�74Ɨ7B�FB�v7F�fRr���v��F�r�67&���F������b��B���wf�Wr�v�&��WBr�&V�FW%v�&��WB�����b��B���wf�Wrֆ�7F�'�r���D��7F�'������b��B���wf�Wrֆ��Rr�WFFT���T&��W"�����b��B���wf�Wr�W�W&6�6W2r�&V�FW$W�W&6�6TƗ7B����Р�gV�7F���&V�FW%v�&��WB�����b�2�v�&��WDW�W&6�6W2��V�wF������6��uf�Wr�wf�Wr��W66�W2r��&WGW&�Т�b�2�7F�fTW��G���2�v�&��WDW�W&6�6W2��V�wF��2�7F�fTW��G��2�v�&��WDW�W&6�6W2��V�wF�����6��7BW��2�v�&��WDW�W&6�6W5�2�7F�fTW��G�Ӱ�����VFW �F�7V�V�B�vWDV�V�V�D'��B�wv�&��WBֆVFW"���Rr��FW�D6��FV�BТf�DFFU6��'B��WrFFR�����6��7BF�F�6WG2�2�v�&��WDW�W&6�6W2�&VGV6R��B�R���B�R�6WG2��V�wF�����F�7V�V�B�vWDV�V�V�D'��B�v�WF�W�W&6�6W2r��FW�D6��FV�B�2�v�&��WDW�W&6�6W2��V�wF���F�7V�V�B�vWDV�V�V�D'��B�v�WF�6WG2r��FW�D6��FV�B�F�F�6WG3��F�7V�V�B�vWDV�V�V�D'��B�v�WF�7FGW2r��FW�D6��FV�BТ2���F���v�&��WD�B�~)�27��6VBr��2�6f��r�u6f��~(
+br�rr������F'0�6��7BF'2�F�7V�V�B�vWDV�V�V�D'��B�vW��F'2r���F'2���W$�D���2�v�&��WDW�W&6�6W2����R����� ��'WGF��6�73�&W��F"G�����2�7F�fTW��G��v7F�fRr�v��7F�fRw�"��6Ɩ6��'7v�F6�W��G��Ғ#�G�R���WТG�R�6WG2��V�wF����7�6�73�'F"�6�V�B#�G�R�6WG2��V�wF����7���rwТ��'WGF��������rr������67&���7F�fRF"��F�f�Wp�6WEF��V�WB�������6��7B7F�fUF"�F'2�VW'�6V�V7F�"�r�W��F"�7F�fRr����b�7F�fUF"�7F�fUF"�67&��Ė�F�f�Wr��&V�f��#�w6���F�r���Ɩ�S�v�V&W7Br�&��6��v�V&W7Brғ����S������&R�f���g&���7B6WB�bF��2W�W&6�6P��b�W��6WG2��V�wF�����6��7B�7B�W��6WG5�W��6WG2��V�wF��Ӱ�2�4&�G�vV�v�B��7B�4&�G�vV�v�B��f�6S��2�&W4���7B�&W4���f�6S��2�6V6��G2��7B�6V6��G2��3���b�2�4&�G�vV�v�B�2�vV�v�B��7B�vV�v�B���V����7B�vV�v�B����b�2�&W4��2�&W2��7B�&W2���V����7B�&W2���Р����V��6��7B�V��F�7V�V�B�vWDV�V�V�D'��B�wv�&��WB��V�r���6��7BvV�v�D6&D�F���2�4&�G�vV�v�@���F�b6�73�'7FWW"�6&B#��F�b6�73�'7FWW"��&V�"7G��S�&F�7���f�W��Ɩv�֗FV�3�6V�FW#��W7F�g��6��FV�C�76R�&WGvVV�#��7��vV�v�B��r���7���'WGF��6�73�'F�vv�R�6����"��6Ɩ6��'F�vv�T&�G�vV�v�B��"7G��S�&f��B�6��S�'��FF��s�G���#�	��2%r����'WGF�����F�c��F�b6�73�'7FWW"#��F�b6�73�'7FW�F�7��"7G��S�&f�W���&�&FW"�6���#�3SSS�"��6Ɩ6��'F�vv�T&�G�vV�v�B��#��F�b6�73�&��F�7��#�%s��F�c��F�b6�73�'7FW�V�B#�FF�FBvV�v�C��F�c���F�c���F�c���F�c� ���F�b6�73�'7FWW"�6&B#��F�b6�73�'7FWW"��&V�"7G��S�&F�7���f�W��Ɩv�֗FV�3�6V�FW#��W7F�g��6��FV�C�76R�&WGvVV�#��7��vV�v�B��r���7���'WGF��6�73�'F�vv�R�6��"��6Ɩ6��'F�vv�T&�G�vV�v�B��"7G��S�&f��B�6��S�'��FF��s�G���#�	��2&�G�vV�v�C��'WGF�����F�c��F�b6�73�'7FWW"#��'WGF��6�73�'7FW�'F�֖�W2"��6Ɩ6��&F��wvV�v�Br��"�R�#�(�#��'WGF����F�b6�73�'7FW�F�7��"��6Ɩ6��&VF�Ef�VR�wvV�v�Br�#��F�b6�73�'7FW�f�VR"�C�'r�f�#�G�2�vV�v�G���F�c��F�b6�73�'7FW�V�B#�FF�G�S��F�c���F�c��'WGF��6�73�'7FW�'F��W2"��6Ɩ6��&F��wvV�v�Br�"�R�#���'WGF�����F�c��F�b6�73�'7FW�f��R#��'WGF��6�73�'7FW�'F�֖�W26�"��6Ɩ6��&F��wvV�v�Br���R�#�(�,+���'WGF����'WGF��6�73�'7FW�'F��W26�"��6Ɩ6��&F��wvV�v�Br��R�#�+���'WGF�����F�c���F�c����6��7B&W46&D�F���2�&W4����F�b6�73�'7FWW"�6&B#��F�b6�73�'7FWW"��&V�"7G��S�&F�7���f�W��Ɩv�֗FV�3�6V�FW#��W7F�g��6��FV�C�76R�&WGvVV�#��7��&W3��7���'WGF��6�73�'F�vv�R�6������"��6Ɩ6��'F�vv�U&W4���"7G��S�&f��B�6��S�'��FF��s�G���#�&W3���)�3��'WGF�����F�c��F�b6�73�'7FWW"#��F�b6�73�'7FW�F�7��"7G��S�&f�W���&�&FW"�6���#�3SSS�"��6Ɩ6��'F�vv�U&W4���#��F�b6�73�&��F�7��#�����F�c��F�b6�73�'7FW�V�B#�FF�V�&�R&W3��F�c���F�c���F�c���F�c��F�b6�73�'7FWW"�6&B#��F�b6�73�'7FWW"��&V�#���BF��R�6V6��G2���F�c��F�b6�73�'7FWW"#��'WGF��6�73�'7FW�'F�֖�W2"��6Ɩ6��&F��w6V6��G2r��R�#�(�#S��'WGF����F�b6�73�'7FW�F�7��"��6Ɩ6��&VF�Ef�VR�w6V6��G2r�#��F�b6�73�'7FW�f�VR"�C�'2�f�#�G�2�6V6��G7���F�c��F�b6�73�'7FW�V�B#�FF�G�S��F�c���F�c��'WGF��6�73�'7FW�'F��W2"��6Ɩ6��&F��w6V6��G2r�R�#�S��'WGF�����F�c��F�b6�73�'7FW�f��R#��'WGF��6�73�'7FW�'F�֖�W26�"��6Ɩ6��&F��w6V6��G2r���#�(�#��'WGF����'WGF��6�73�'7FW�'F��W26�"��6Ɩ6��&F��w6V6��G2r��#���'WGF�����F�c���F�c� ���F�b6�73�'7FWW"�6&B#��F�b6�73�'7FWW"��&V�"7G��S�&F�7���f�W��Ɩv�֗FV�3�6V�FW#��W7F�g��6��FV�C�76R�&WGvVV�#��7��&W3��7���'WGF��6�73�'F�vv�R�6��"��6Ɩ6��'F�vv�U&W4���"7G��S�&f��B�6��S�'��FF��s�G���#�(����B�����'WGF�����F�c��F�b6�73�'7FWW"#��'WGF��6�73�'7FW�'F�֖�W2"��6Ɩ6��&F��w&W2r���#�(�#��'WGF����F�b6�73�'7FW�F�7��"��6Ɩ6��&VF�Ef�VR�w&W2r�#��F�b6�73�'7FW�f�VR"�C�'"�f�#�G�2�&W7���F�c��F�b6�73�'7FW�V�B#�FF�G�S��F�c���F�c��'WGF��6�73�'7FW�'F��W2"��6Ɩ6��&F��w&W2r��#���'WGF�����F�c���F�c�����V����W$�D��� ��F�b6�73�&W���&V�#���r��vv��s��F�c��F�b6�73�&W����R��&vR#�G�W����W���F�c��F�b6�73�'6WB�&FvR#�6WBG�W��6WG2��V�wF�����F�c�G�vV�v�D6&D�F��ТG�&W46&D�F��Т�F�b6�73�'6WG2�&V#��F�b6�73�'6WG2�F�F�R#�6WG2��vvVBF��26W76�����F�c��F�b6�73�'6WG2�w&�B"�C�'6WG2�w&�B#�G�&V�FW%6WE���2�W�����F�c���F�c���Р�gV�7F���7v�F6�W���G����2�7F�fTW��G���G���&V�FW%v�&��WB����Р�gV�7F���F�vv�T&�G�vV�v�B����2�4&�G�vV�v�B�2�4&�G�vV�v�C��&V�FW%v�&��WB����Р�gV�7F���F�vv�U&W4�����2�&W4��2�&W4���&V�FW%v�&��WB����Р�gV�7F���F��f�V�B�FV�F����b�f�V�B���wvV�v�Br���2�vV�v�B��F�������F��&�V�B��2�vV�v�B�FV�F�������6��7BV��F�7V�V�B�vWDV�V�V�D'��B�wr�f�r����b�VV��FW�D6��FV�B�2�vV�v�C���V�6R�b�f�V�B���w6V6��G2r���2�6V6��G2��F������2�6V6��G2�FV�F���6��7BV��F�7V�V�B�vWDV�V�V�D'��B�w2�f�r����b�VV��FW�D6��FV�B�2�6V6��G3���V�6R��2�&W2��F������2�&W2�FV�F���6��7BV��F�7V�V�B�vWDV�V�V�D'��B�w"�f�r����b�VV��FW�D6��FV�B�2�&W3��ЧР�gV�7F���VF�Ef�VR�f�V�B���6��7B7W"�f�V�B���wvV�v�Br�2�vV�v�B��f�V�B���w6V6��G2r�2�6V6��G2�2�&W2���6��7BV�B�f�V�B���wvV�v�Br�v�rr��f�V�B���w6V6��G2r�w6V6��G2r�w&W2r���6��7Bf��&��B�V�FW"G�V�GӦ�7W"����b�f�����V�&WGW&㰢6��7B�V��'6Tf��B�f���b��4���VҒ���V���&WGW&㰢�b�f�V�B���wvV�v�Br���2�vV�v�B��F��&�V�B��V������6��7BV��F�7V�V�B�vWDV�V�V�D'��B�wr�f�r����b�VV��FW�D6��FV�B�2�vV�v�C���V�6R�b�f�V�B���w6V6��G2r���2�6V6��G2��F��&�V�B��Vғ��6��7BV��F�7V�V�B�vWDV�V�V�D'��B�w2�f�r����b�VV��FW�D6��FV�B�2�6V6��G3���V�6R��2�&W2��F��&�V�B��Vғ��6��7BV��F�7V�V�B�vWDV�V�V�D'��B�w"�f�r����b�VV��FW�D6��FV�B�2�&W3��ЧР�gV�7F���f�E6WE��2���6��7BwB�2�4&�G�vV�v�B�t%rr��2�vV�v�B���V���G�2�vV�v�Gֶv�t%rr����b�2�&W4���2�&W2����V���&WGW&�2�6V6��G2��G�wG�9rG�2�6V6��G7�6�G�wG�9r����Т&WGW&�G�wG�9rG�2�&W7���Р�gV�7F���&V�FW%6WE���2�W�����b�W��6WG2��V�wF������&WGW&�s�F�b7G��S�&6���#�3CCC�f��B�6��S�7���&v���F��G��#���6WG2�WB(	B��r��W"f�'7B��R&�fS��F�c�s��&WGW&�W��6WG2����2����� ��F�b6�73�'6WB����G�����W��6WG2��V�wF���vg&W6�r�rw�#��7�6�73�'6�#�2G������7���7��G�f�E6WE��2����7����F�c������rr���Р�7��2gV�7F�����u6WB����6��7BW��2�v�&��WDW�W&6�6W5�2�7F�fTW��G�Ӱ�6��7B6WD�V��W��6WG2��V�wF����6��7B7GV�vV�v�B�2�4&�G�vV�v�B��V���2�vV�v�C��6��7B7GV�&W2�2�&W4���V���2�&W3��6��7B7GV�6V6��G2�2�&W4��2�6V6��G2���6��7B6WDFF���6WD�V���vV�v�C�7GV�vV�v�B��&W3�7GV�&W2���4&�G�vV�v�C�2�4&�G�vV�v�B��&W4��2�&W4���6V6��G3�7GV�6V6��G2����F���C��V����Ӱ�W��6WG2�W6��6WDFF������WFFR6WB6�V�FW"&FvR�B���2���VF�FVǐ�&V�FW%v�&��WB����6��7BF�7D�&V��f�E6WE��6WDFF���F�7B�6WBG�6WD�V�ӢG�F�7D�&V��)�6������7&VFRv�&��WB����F�����f�'7B6W@��b�2���F���v�&��WD�Bbb2���F���6���V7FVB���G'���6��7Bv��v�B��v7&VFR�v�&��WBr�u�5Br���FFS��WrFFR���F��4�7G&��r���7ƗB�uBr�����W�W&6�6T��W3�2�v�&��WDW�W&6�6W2���R��R���R���ғ��2���F���v�&��WD�B�v��C��F�7V�V�B�vWDV�V�V�D'��B�v�WF�7FGW2r��FW�D6��FV�B�~)�27��6VBs���6F6��R���6��6��R�v&�t6�V�B��B7&VFRv�&��WB����F���r�R���ТР���6fR6WBF���F����b�2���F���v�&��WD�B���G'���6��7B&W2�v�B��v7&VFR�6WBr�u�5Br���v�&��WD�C�2���F���v�&��WD�B��W�W&6�6T�C�W��B��W�W&6�6T��S�W����R��6WD�V���vV�v�C�7GV�vV�v�B��&W3�7GV�&W2���4&�G�vV�v�C�2�4&�G�vV�v�B��6V6��G3�7GV�6V6��G2��ғ��6WDFF���F���B�&W2�C���6F6��R���6��6��R�v&�t6�V�B��B6fR6WBF���F���r�R���ТЧР���)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y ���d��4�t�$��U@���)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y �gV�7F���6��f�&�f��6�����6��7BF�F�6WG2�2�v�&��WDW�W&6�6W2�&VGV6R��B�R���B�R�6WG2��V�wF������b�F�F�6WG2�������b�6��f�&҂t��6WG2��vvVB�F�66&Bv�&��WC�r���&W6WD�Dv���R���Т&WGW&㰢Т'V��Df��6�f�Wr����6��uf�Wr�wf�Wr�f��6�r���Р�gV�7F���'V��Df��6�f�Wr����6��7BF�F�6WG2�2�v�&��WDW�W&6�6W2�&VGV6R��B�R���B�R�6WG2��V�wF�����6��7BW�v�F�6WG2�2�v�&��WDW�W&6�6W2�f��FW"�R��R�6WG2��V�wF������F�7V�V�B�vWDV�V�V�D'��B�vf��6��7V"r��FW�D6��FV�BТG�W�v�F�6WG2��V�wF��W�W&6�6RG�W�v�F�6WG2��V�wF����w2r�rw�+rG�F�F�6WG7�6WG6���F�7V�V�B�vWDV�V�V�D'��B�vf��6��7V��'�r����W$�D���W�v�F�6WG2���W��� ��F�b6�73�'7V��'��W�W&6�6R6&B6&B�6�"7G��S�&�&v���&�GF�ӣ��#��F�b6�73�'7V��'��W����R#�G�W����W���F�c��F�b6�73�'7V��'��6WG2#�G�W��6WG2����2����� ��F�b6�73�'7V��'�����#�2G���ӢG�f�E6WE��2����F�c������rr�Т��F�c���F�c������rr����6��7B6fT'F��F�7V�V�B�vWDV�V�V�D'��B�w6fR�'F�r����b�2���F���v�&��WD�B���6fT'F��FW�D6��FV�B�~)�2�&VG�6fVBF���F���s��6fT'F��F�6&�VB�G'VS��6fT'F��7G��R�&6�w&�V�B�r3F6cSs���V�6R��6fT'F��FW�D6��FV�B�u6fRF���F���s��6fT'F��F�6&�VB�f�6S��6fT'F��7G��R�&6�w&�V�B�rs��ЧР�7��2gV�7F���6fUF���F��ₒ���b�2�6f��r��2���F���v�&��WD�B�&WGW&㰢2�6f��r�G'VS���6��7B'F��F�7V�V�B�vWDV�V�V�D'��B�w6fR�'F�r���'F��FW�D6��FV�B�u6f��~(
+bs��'F��F�6&�VB�G'VS���G'���6��7Bv��v�B��v7&VFR�v�&��WBr�u�5Br���FFS��WrFFR���F��4�7G&��r���7ƗB�uBr�����W�W&6�6T��W3�2�v�&��WDW�W&6�6W2���R��R���R���ғ��2���F���v�&��WD�B�v��C���f�"�6��7BW��b2�v�&��WDW�W&6�6W2���f�"�6��7B6WB�bW��6WG2���v�B��v7&VFR�6WBr�u�5Br���v�&��WD�C�2���F���v�&��WD�B��W�W&6�6T�C�W��B��W�W&6�6T��S�W����R��6WD�VӢ6WB�6WD�V���vV�v�C�6WB�vV�v�B��&W3�6WB�&W2���4&�G�vV�v�C�6WB�4&�G�vV�v�B��f�6R��6V6��G3�6WB�6V6��G2����ғ��ТР�'F��FW�D6��FV�B�~)�26fVBs��'F��7G��R�&6�w&�V�B�r3F6cSs��F�7B�u6fVBF���F���	�*�r����6F6��R���'F��FW�D6��FV�B�u&WG'�s��'F��F�6&�VB�f�6S��2�6f��r�f�6S��F�7B�u6fRf��VB(	B6�V6���W"6���V7F���r���ЧР�gV�7F���&W6WD�Dv���R����2�v�&��WDW�W&6�6W2��Ӱ�2���F���v�&��WD�B��V�ð�2�6f��r�f�6S��2�6V�V7FVD�W66�W2��Ӱ�6��uf�Wr�wf�Wrֆ��Rr���Р���)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y �����5D�%����)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y �gV�7F���v�F�7F�'�����6��uf�Wr�wf�Wrֆ�7F�'�r���Р�7��2gV�7F�����D��7F�'�����6��7B6��FV�B�F�7V�V�B�vWDV�V�V�D'��B�v��7F�'��6��FV�Br���6��FV�B���W$�D���s�F�b6�73�&��F��r�7FFR#��F�b6�73�'7���W"#���F�c���F��~(
+c��F�c�s��G'���6��7Bv�&��WG2�v�B��w&V6V�B�v�&��WG2r����b�v�&��WG2��V�wF����6��FV�B���W$�D���s�F�b6�73�&V�G�#��F�b6�73�&�6��#�	�8���F�c���v�&��WG2��vvVB�WC��F�c�s��&WGW&㰢Т6��FV�B���W$�D���v�&��WG2���r�� ��F�b6�73�&6&B��7F�'�֗FV�"7G��S�&�&v���&�GF�ӣ�� �FF֖C�"G�r�G�"FF���S�"G�W62�r���R��"FF�FFS�"G�r�FFW� ���6Ɩ6��&��7F�'��FV�6Ɩ6��WfV�B�rG�r�G�r��G�W62�r���R����rG�r�FFW�r� ������FW&F�v��&��7F�'����u&W757F'B�WfV�B�rG�r�G�r��G�W62�r���R���� ������FW'W�&��7F�'����u&W74V�B�� ������FW&�VfS�&��7F�'����u&W74V�B��#��F�b6�73�&��&�r#��F�c��F�b6�73�&����R#�G�r���W���F�c��F�b6�73�&���WF#�G�f�DFFTg&��7G"�r�FFR����F�c���F�c��7�6�73�&��'&�r#�(���7����F�c���F�c������rr����6F6��R���6��FV�B���W$�D���s�F�b6�73�&V�G�#��F�b6�73�&�6��#�)������F�c�6�V�B��B��B��7F�'���F�c�s��ЧР���)H)H���r�&W72�7F���6�VWBf�"��7F�'�)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ��WB��F��W"��V�ð��WB��f�&VB�f�6S���gV�7F�����7F�'����u&W757F'B�R��B���R�����f�&VB�f�6S����F��W"�6WEF��V�WB���������f�&VB�G'VS���f�vF�"�f�'&FRbb�f�vF�"�f�'&FR�3���6��t7F���6�VWB��B���R�����S���Р�gV�7F�����7F�'����u&W74V�B����6�V%F��V�WB���F��W"���Р�gV�7F�����7F�'��FV�6Ɩ6��R��B���R�FFR����b���f�&VB����f�&VB�f�6S�&WGW&�Т�V�v�&��WDFWF��B���R�FFR���Р�gV�7F���6��t7F���6�VWB��B���R���2�7F���v�&��WB���B���RӰ�F�7V�V�B�vWDV�V�V�D'��B�v7F����6�VWB�F�F�Rr��FW�D6��FV�B���S��F�7V�V�B�vWDV�V�V�D'��B�v7F�����fW&��r��6�74Ɨ7B�FB�w6��rr���Р�gV�7F�����FT7F���6�VWB����F�7V�V�B�vWDV�V�V�D'��B�v7F�����fW&��r��6�74Ɨ7B�&V��fR�w6��rr���2�7F���v�&��WB��V�ð�Р�gV�7F���6��6T7F���6�VWB�R����b�R�F&vWB���F�7V�V�B�vWDV�V�V�D'��B�v7F�����fW&��r����FT7F���6�VWB����Р�gV�7F���6��f�&�FV�WFUv�&��WB����6��7Br�2�7F���v�&��WC���b�r�&WGW&㰢��FT7F���6�VWB�����b�6��f�&҆FV�WFR"G�r���W�#�����F��2v���W&��V�Fǒ&V��fR�Bg&����F������&WGW&㰢FV�WFUv�&��WB�r�B���Р�7��2gV�7F���FV�WFUv�&��WB�v�&��WD�B���F�7B�tFV�WF��~(
+br���G'���v�B��vFV�WFR�v�&��WBr�u�5Br��v�&��WD�Bғ��F�7B�uv�&��WBFV�WFVB)�2r�����D��7F�'������&V��B��7F�'�Ɨ7@��6F6��R���F�7B�tFV�WFRf��VB(	BG'�v��r���6��6��R�W'&�"�tFV�WFRW'&�#�r�R���ЧР�7��2gV�7F����V�v�&��WDFWF�v�&��WD�B���R�FFR�����6��rF�RFWF��f�Wr���VF�FVǒv�F���F��r7FFP�F�7V�V�B�vWDV�V�V�D'��B�vFWF���F�F�Rr��FW�D6��FV�B���S��F�7V�V�B�vWDV�V�V�D'��B�vFWF���7V"r��FW�D6��FV�B�f�DFFTg&��7G"�FFR���F�7V�V�B�vWDV�V�V�D'��B�vFWF���6��FV�Br����W$�D��Тs�F�b6�73�&��F��r�7FFR#��F�b6�73�'7���W"#���F�c���F��r6WG>(
+c��F�c�s��F�7V�V�B�vWDV�V�V�D'��B�vFWF���&�GF��r��7G��R�F�7���v���Rs��6��uf�Wr�wf�Wr�FWF��r����G'���6��7BFWF���v�B��v�&��WB�FWF��gv�&��WD�C�G�v�&��WD�G����2�FWF��v�&��WB�FWF�ð�&V�FW%v�&��WDFWF�FWF����6F6��R���F�7V�V�B�vWDV�V�V�D'��B�vFWF���6��FV�Br����W$�D��Тs�F�b6�73�&V�G�#��F�b6�73�&�6��#�)������F�c�6�V�B��B��Bv�&��WBFWF��3��F�c�s��ЧР�gV�7F���&V�FW%v�&��WDFWF�FWF���6��7B6��FV�B�F�7V�V�B�vWDV�V�V�D'��B�vFWF���6��FV�Br�����b�FWF���W�W&6�6W2��FWF���W�W&6�6W2��V�wF�������6��FV�B���W$�D���s�F�b6�73�&V�G�#��F�b6�73�&�6��#�	��������F�c���6WG2&V6�&FVBf�"F��2v�&��WC��F�c�s��&WGW&㰢Р�6��7BF�F�6WG2�FWF���W�W&6�6W2�&VGV6R��B�W����B�W��6WG2��V�wF��������6��r&W7V�Rv&��r�bF�W&Rw2�&VG��7F�fRv�&��W@�6��7Bv&�F����2�v�&��WDW�W&6�6W2��V�wF��bb2���F���v�&��WD�B���s�F�b6�73�'&W7V�R�v&�#�)������R�fR�V�6fVBv�&��WB��&�w&W72�6��F��V��rF��2��Rv���&W�6R�B���F�c�p��rs���6��FV�B���W$�D���v&�F���FWF���W�W&6�6W2���W�����6��7B6WD�F���W��6WG2����2�����6��7BwB�2�4&�G�vV�v�B��2�vV�v�B����V���t%rr�G�2�vV�v�Gֶv��6��7B'B��2�&W4���2�&W2����V����2�6V6��G2��G�2�6V6��G7�6�t��r���2�&W3��&WGW&��F�b6�73�'6WB����#��7�6�73�'6�#�2G�2�6WD�V����7���7��G�wG�9rG�'G���7����F�c���Ғ����rr������&W7B6WB7V��'��6��7B6WG5v�F�vV�v�B�W��6WG2�f��FW"�2��2�vV�v�B���V����WBF�Ɩ�R�rs���b�6WG5v�F�vV�v�B��V�wF�����6��7B��vV�v�B��F��������6WG5v�F�vV�v�B���2��2�vV�v�B����6��7BF�6WB�6WG5v�F�vV�v�B�f��B�2��2�vV�v�B�����vV�v�B���F�Ɩ�R�F�6WC�G���vV�v�Gֶr9rG�F�6WC��&W2��s�w����V�6R�b�W��6WG2�6��R�2��2�6V6��G2�����6��7B��6V2��F��������W��6WG2���2��2�6V6��G2������F�Ɩ�R�&W7B���C�G���6V7�6���V�6R��F�Ɩ�R�G�W��6WG2��V�wF��6WBG�W��6WG2��V�wF����w2r�rw���Р�&WGW&� ��F�b6�73�&FWF���W�W&6�6R6&B6&B�6�#��F�b6�73�&FWF���W����R#�G�W����W���F�c��F�b6�73�'6WG2�w&�B#�G�6WD�F�����F�c��F�b6�73�&FWF���W��F�F�#�G�W��6WG2��V�wF��6WBG�W��6WG2��V�wF����w2r�rw�+rG�F�Ɩ�W���F�c���F�c���Ғ����rr������6��r6��F��VR'WGF��F�7V�V�B�vWDV�V�V�D'��B�vFWF���&�GF��r��7G��R�F�7���vf�W�s��Р�gV�7F���&W7V�Uv�&��WB�����b�2�FWF��v�&��WB�&WGW&㰠���v&��bV�6fVB7F�fRv�&��WBv���&R��7@��b�2�v�&��WDW�W&6�6W2��V�wF��bb2���F���v�&��WD�B����b�6��f�&҂u��R�fR�V�6fVBv�&��WB��&�w&W72�&W�6R�Bv�F�F��2��S�r��&WGW&㰢Р���&V6��7G'V7Bv�&��WB7FFRg&��F�RFWF���2�v�&��WDW�W&6�6W2�2�FWF��v�&��WB�W�W&6�6W2���W�����6��7B��FVDW��2�W�W&6�6W2�f��B�R��R�B���W��B����Ӱ�&WGW&����C�W��B����S�W����R���W66�Tw&�W�G3���FVDW���W66�Tw&�W�G2������6WG3�W��6WG2���2�����6WD�VӢ2�6WD�V���vV�v�C�2�vV�v�B��&W3�2�&W2���4&�G�vV�v�C�2�4&�G�vV�v�B��f�6R��&W4��2�&W4���f�6R��6V6��G3�2�6V6��G2������F���C�2���F���B��Ғ���Ӱ�ғ���2���F���v�&��WD�B�2�FWF��v�&��WB�C��2�7F�fTW��G����2�6f��r�f�6S�����&R�f���7FWW'2g&���7B6WB�bf�'7BW�W&6�6P��b�2�v�&��WDW�W&6�6W5����6WG2��V�wF�����6��7B�7B�2�v�&��WDW�W&6�6W5���6WG5�2�v�&��WDW�W&6�6W5���6WG2��V�wF��Ӱ�2�vV�v�B��7B�vV�v�C��2�&W2��7B�&W3��Р�F�7B�u&W7V�VB(	B6''���	�*�r���6��uf�Wr�wf�Wr�v�&��WBr���Р���)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y �������)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y �7��2gV�7F�����7F�����WF��B�ttUBr�&�G���V���6��7B�G2���WF��B��VFW'3��t6��FV�B�G�Rs�vƖ6F�����6��r�Ӱ��b�&�G���G2�&�G���4���7G&��v�g��&�G����6��7B&W2�v�BfWF6�������F����7F����G�7F������G2����b�&W2������6��7BW'"�v�B&W2�FW�B����F�&�r�WrW'&�"�G�&W2�7FGW7ӢG�W''����Т&WGW&�&W2�6�ₓ��Р���)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y ���UD��0���)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y �gV�7F���f�DFFR�B���&WGW&�B�F���6�TFFU7G&��r�vV��Rr��vVV�F��v���rr��V#�v�V�W&�2r����F��v���rr�F��v�V�W&�2rғ��ЦgV�7F���f�DFFU6��'B�B���&WGW&�B�F���6�TFFU7G&��r�vV��Rr��vVV�F��w6��'Br����F��w6��'Br�F��v�V�W&�2rғ��ЦgV�7F���f�DFFTg&��7G"�2����b�2�&WGW&�rs��&WGW&��WrFFR�2�uC��r��F���6�TFFU7G&��r�vV��Rr��vVV�F��w6��'Br����F��w6��'Br�F��v�V�W&�2r��V#�v�V�W&�2rғ��ЦgV�7F���W62�2���&WGW&�2�&W�6R���r�u��r��&W�6R���B�r�u��Br���Ц�WBF�7EF��W#��gV�7F���F�7B��6r���6��7BV��F�7V�V�B�vWDV�V�V�D'��B�wF�7Br���V��FW�D6��FV�B��6s��V��6�74Ɨ7B�FB�w6��rr���6�V%F��V�WB�F�7EF��W"���F�7EF��W"�6WEF��V�WB�����V��6�74Ɨ7B�&V��fR�w6��rr��#����Р���)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y ���d��$4�DD(	B&V���F����G2&�VB����W6VBv�V�F�R�2�V�VB��6�ǒ����6W'fW"������fW&6V��ƗfRFF�2��FVBg&����F�����7FV@���)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y)Y �6��7Bd��$4���U44�U2�����C�sFFc#Sb�S3rӃS"�&&#b�CfVCf#�CC3br���S�t6�W7Br�����C�sFFc#Sb�S3rӃsBӃ"�c�C��S32r���S�t&6�r�����C�sFFc#Sb�S3rӃSӖ#6B�3CFfc�6Br���S�u6��V�FW'2r�����C�sFFc#Sb�S3rӃS��VcR�FSs�#f3C#C"r���S�t&�6W2r�����C�sFFc#Sb�S3rӃ&b�#S�B�c3�#S�S�S���r���S�uG&�6W2r�����C�sFFc#Sb�S3rӃ&ӃCS�CS�#�#3F&SvBr���S�uVG&�6W2r�����C�sFFc#Sb�S3rӃ�R�&&cB�F6F&###�Vbr���S�t��7G&��w2r�����C�s3&c#Sb�S3rӃF"�F2�fFCsS�S2r���S�t6�fW2r�����C�s3&c#Sb�S3rӃS2ӆS�2�Cc��#FS�S"r���S�uG&2r�����C�sFFc#Sb�S3rӃ62Ӄ3vB�S�#6C�SC"r���S�t'2r���Ӱ����6��'F��Bf�"�W66�Rw&�W�G0�6��7B�r���4�U5C�sFFc#Sb�S3rӃS"�&&#b�CfVCf#�CC3br��$4��sFFc#Sb�S3rӃsBӃ"�c�C��S32r��4��TâsFFc#Sb�S3rӃSӖ#6B�3CFfc�6Br��$�4U�sFFc#Sb�S3rӃS��VcR�FSs�#f3C#C"r��E$�4U�sFFc#Sb�S3rӃ&b�#S�B�c3�#S�S�S���r��TE3�sFFc#Sb�S3rӃ&ӃCS�CS�#�#3F&SvBr����3�sFFc#Sb�S3rӃ�R�&&cB�F6F&###�Vbr��4�dU3�s3&c#Sb�S3rӃF"�F2�fFCsS�S2r��E$3�s3&c#Sb�S3rӃS2ӆS�2�Cc��#FS�S"r��%3�sFFc#Sb�S3rӃ62Ӄ3vB�S�#6C�SC"r��Ӱ��6��7Bd��$4��U�U$4�4U2�����)H)H6�W7B)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ���C�sFFc#Sb�S3rӃӆc"�fFc#vfSs6#r���S�t&V�6�&W72r��W66�Tw&�W�G3���r�4�U5E������C�s3&c#Sb�S3rӃ��#sSr�fV#S�fFc�Vr���S�t��6Ɩ�RGV�&&V��&W72r��W66�Tw&�W�G3���r�4�U5E������C�s3&c#Sb�S3rӃC2�#F3�f&CF#Sc��rr���S�t��6Ɩ�RGV�&&V��fǖRr��W66�Tw&�W�G3���r�4�U5E������C�s3&c#Sb�S3rӃ3Ӗ#�R�c&VCC#&3r���S�tFVf�6�BW6��W2r��W66�Tw&�W�G3���r�4�U5E������)H)H&6�)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ���C�s3&c#Sb�S3rӃ"�c3�3�c�3�CVC3�r���S�u6VFVB6&�R&�rr��W66�Tw&�W�G3���r�$4�������C�s3&c#Sb�S3rӃ3ӆfVb�CcfCssf6cBr���S�u7F�F��rV��F�v�r��W66�Tw&�W�G3���r�$4�������C�s3&c#Sb�S3rӃf2�#6b�VfcS36VCcBr���S�u7G&�v�B&�V��F�v�r��W66�Tw&�W�G3���r�$4�������C�s3&c#Sb�S3rӃFbӓ6c��f3V#SS��sv32r���S�t&V���B��V6�V��F�v�r��W66�Tw&�W�G3���r�$4�������C�s3&c#Sb�S3rӃ2Ӗ#B�C�6#sV333�"r���S�uv�FR�w&�V��F�v�r��W66�Tw&�W�G3���r�$4�������C�s3&c#Sb�S3rӃ�6cR�C��cv#SvC6Br���S�u&WfW'6R�w&�V��F�v�r��W66�Tw&�W�G3���r�$4�������)H)H6��V�FW'2)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ���C�s3&c#Sb�S3rӃb�&63��cFC�fc�Srr���S�tGV�&&V��6��V�FW"&W72r��W66�Tw&�W�G3���r�4��T�������C�sFFc#Sb�S3rӃs2Ӄ6B�S3C6C&c��vBr���S�tGV�&&V���FW&�&�6Rr��W66�Tw&�W�G3���r�4��T�������C�s3&c#Sb�S3rӃc2ӃV�ff3�3cfV&C�r���S�t��v�6&�R&V"FV�Bfǒr��W66�Tw&�W�G3���r�4��T�������C�s3&c#Sb�S3rӃs�##�2�V#�S6Vcfs6br���S�t&V�B��fW"�FW&�&�6Rr��W66�Tw&�W�G3���r�4��T�������C�s3&c#Sb�S3rӃvBӃ3���3vFc�cvSS�SBr���S�t��R�&�6&�R�FW&�&�6Rr��W66�Tw&�W�G3���r�4��T�������C�s3&c#Sb�S3rӃ3"�#f32�VcsC��f#sbr���S�tGV�&&V��W&�v�B&�rr��W66�Tw&�W�G3���r�4��T�������)H)H&�6W2)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ���C�s3&c#Sb�S3rӃF2�&F3R�c3SsfcsC�#Fbr���S�t&&&V��7W&�r��W66�Tw&�W�G3���r�$�4U������C�s3&c#Sb�S3rӃ#rӓs2�VCS#f#VVFC�r���S�t��6Ɩ�R6&�R7W&�r��W66�Tw&�W�G3���r�$�4U������C�s3&c#Sb�S3rӃ#����R�Sc#3#�V&#2r���S�u&V6�W"7W&�r��W66�Tw&�W�G3���r�$�4U������C�s3&c#Sb�S3rӃ3�fVR�cs3C�6c6S�Br���S�t&V���B�&6�6&�R7W&�r��W66�Tw&�W�G3���r�$�4U������C�s3&c#Sb�S3rӃ&2�3�S����s&3C�r���S�t��R�&���v�6&�R7W&�r��W66�Tw&�W�G3���r�$�4U������C�s3&c#Sb�S3rӃ#b�c���6f#�V&CCSr���S�tGV�&&V��6��6V�G&F���7W&�r��W66�Tw&�W�G3���r�$�4U������C�s3&c#Sb�S3rӃCR�#s�c&3Vf3sF&Crr���S�tGV�&&V����6Ɩ�R7W&�r��W66�Tw&�W�G3���r�$�4U������)H)HG&�6W2)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ���C�s3&c#Sb�S3rӃ3��#6"�SvFVFc�CSF"r���S�uG&�6W2&W76F�v�r��W66�Tw&�W�G3���r�E$�4U������C�s3&c#Sb�S3rӃ6ӓfS��3cc33##fcBr���S�t6��6R�w&�&V�6�&W72r��W66�Tw&�W�G3���r�E$�4U������C�s3&c#Sb�S3rӃSrӓSb�C3&C#C�3sbr���S�tGV�&&V���fW&�VBG&�6W2W�FV�6���r��W66�Tw&�W�G3���r�E$�4U������C�s3&c#Sb�S3rӃ2ӃC�B�c333s�SC#�r���S�tǖ��rG&�6W2W�FV�6���r��W66�Tw&�W�G3���r�E$�4U������C�s3&c#Sb�S3rӃc2�3c"�3cF&63�3�br���S�t6&�R�fW&�VBG&�6W2W�FV�6���r��W66�Tw&�W�G3���r�E$�4U������C�s3&c#Sb�S3rӃ3BӓvB�SvcF3Vf33Rr���S�t6&�Rǖ��rG&�6W2W�FV�6���r��W66�Tw&�W�G3���r�E$�4U������C�s3&c#Sb�S3rӃ#�CC"�S##FVCf#33rr���S�t��R�&��fW&�VB6&�RG&�6W2W�Br��W66�Tw&�W�G3���r�E$�4U������)H)HVG&�6W2)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ���C�s3&c#Sb�S3rӃV"�cr�Ssss6SCSr���S�u7VBr��W66�Tw&�W�G3���r�TE5������C�s3&c#Sb�S3rӃ#�c�3Ccvcv&&C"r���S�t�Vr&W72r��W66�Tw&�W�G3���r�TE5������C�s3&c#Sb�S3rӃVB�&#62�VC#c�fc#VRr���S�tg&��B7VBr��W66�Tw&�W�G3���r�TE5������C�s3&c#Sb�S3rӃf2ӓ�"�V&F#Sv&S#�r���S�t��R��Vr�Vr&W72r��W66�Tw&�W�G3���r�TE5������)H)H��7G&��w2)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ���C�s3&c#Sb�S3rӃ2�C��ScvV#f�Sfr���S�u&����FVFƖgBr��W66�Tw&�W�G3���r��5������C�s3&c#Sb�S3rӃBӖ#c"�cf3�CccF3�br���S�u6VFVB�Vr7W&�r��W66�Tw&�W�G3���r��5������C�s3&c#Sb�S3rӃӓ6b�V#3ss#csCbr���S�tǖ��r�Vr7W&�r��W66�Tw&�W�G3���r��5������)H)H6�fW2)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ���C�s3&c#Sb�S3rӃ�3���c3cc#s#3�r���S�u7F�F��r6�b&�6Rr��W66�Tw&�W�G3���r�4�dU5������C�sFFc#Sb�S3rӃSbӃs3��C6#cs3��c"r���S�u6VFVB6�b&�6Rr��W66�Tw&�W�G3���r�4�dU5������)H)HG&2)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ���C�s3&c#Sb�S3rӃ�2Ӗ6R�f3V#�S�6Fcbr���S�t&&&V��6�'Vrr��W66�Tw&�W�G3���r�E$5������C�s3&c#Sb�S3rӃ6B�#�SB�csC3�CfcS�2r���S�tGV�&&V��6�'Vrr��W66�Tw&�W�G3���r�E$5������)H)H'2)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H)H ���C�s3&c#Sb�S3rӃ�b�&3#B�V3c#sS�c#Rr���S�uvV�v�FVB7'V�6�r��W66�Tw&�W�G3���r�%5������C�s3&c#Sb�S3rӃv�#sc"�3�C&&f#vCbr���S�t��v��r�Vr&�6Rr��W66�Tw&�W�G3���r�%5������C�s3&c#Sb�S3rӃ6B�#SR�SfcC#&�fRr���S�tGV�&&V��6�FR&V�Br��W66�Tw&�W�G3���r�%5������C�s3&c#Sb�S3rӃS�&c"�c�S#�Rr���S�t7'V�6�r��W66�Tw&�W�G3���r�%5������C�s3&c#Sb�S3rӃ3bӃ##��cF&F&C�F32r���S�t�&ƗVR7'V�6�r��W66�Tw&�W�G3���r�%5����Ӱ���67&�C���&�G�����F���
