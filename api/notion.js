@@ -251,6 +251,26 @@ export default async function handler(req, res) {
       });
     }
 
+    // ── POST: create-exercise ────────────────────────────────────────────────
+    if (action === 'create-exercise' && req.method === 'POST') {
+      const { name, muscleGroupId } = req.body ?? {};
+      if (!name) return res.status(400).json({ error: 'name required' });
+
+      const props = {
+        Name: { title: [{ text: { content: name } }] },
+      };
+      if (muscleGroupId) {
+        props['Muscle Group'] = { relation: [{ id: muscleGroupId }] };
+      }
+
+      const page = await notion('/pages', 'POST', {
+        parent: { database_id: DB.exercises },
+        properties: props,
+      });
+
+      return res.json({ id: page.id, name });
+    }
+
     // ── Unknown action ───────────────────────────────────────────────────────
     return res.status(400).json({ error: `Unknown action: ${action}` });
 
