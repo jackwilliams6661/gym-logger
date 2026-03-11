@@ -813,7 +813,7 @@ function buildFinishView() {
   }
 }
 
-a{ function saveToNotion() {
+async function saveToNotion() {
   if (S.saving || S.notionWorkoutId) return;
   S.saving = true;
 
@@ -1058,7 +1058,7 @@ const MG = {
 };
 
 const FALLBACK_EXERCISES = [
-  // ── Chest ────────────────────────────────────────────────────────────────
+  // ── Chest ─────────────────────────────────────────────────────────────────
   { id: '1ddf1256-1537-81a0-8f02-fdf127fe73b1', name: 'Bench Press',                         muscleGroupIds: [MG.CHEST] },
   { id: '31bf1256-1537-8190-b757-feb59fdf90ea', name: 'Incline Dumbbell Press',               muscleGroupIds: [MG.CHEST] },
   { id: '31bf1256-1537-8143-b4c0-fbd14b516897', name: 'Incline Dumbbell Flye',               muscleGroupIds: [MG.CHEST] },
