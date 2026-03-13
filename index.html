@@ -586,7 +586,7 @@ function renderMuscleGrid() {
   grid.innerHTML = validMuscles.map(m => `
     <button class="muscle-btn ${(S.selectedMuscles.includes(m.id) || (m.aliasIds||[]).some(aid => S.selectedMuscles.includes(aid))) ? 'selected' : ''}"
             onclick="toggleMuscle('${m.id}')">
-      <span class="emoji">${MUSCLE_EMOJI[m.name] || '💪'}</span>
+      <span class="emoji">${m.icon || MUSCLE_EMOJI[m.name] || '💪'}</span>
       ${m.name}
     </button>`).join('');
 

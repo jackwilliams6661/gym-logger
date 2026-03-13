@@ -61,6 +61,7 @@ export default async function handler(req, res) {
       return res.json(data.results.map(p => ({
         id: p.id,
         name: p.properties.Name?.title?.[0]?.plain_text ?? 'Unknown',
+        icon: p.icon?.type === 'emoji' ? p.icon.emoji : null,
       })));
     }
 
@@ -125,13 +126,15 @@ export default async function handler(req, res) {
       const page = await notion('/pages', 'POST', {
         parent: { database_id: DB.logbook },
         properties: {
-          Notes:    { title: [{ text: { content: notes } }] },
-          Set:      { number: setNum },
-          Weight:   { number: weight ?? null },
-          Reps:     { number: reps ?? null },
-          Done:     { checkbox: true },
-          Exercise: { relation: [{ id: exerciseId }] },
-          Workout:  { relation: [{ id: workoutId }] },
+          Notes:      { title: [{ text: { content: notes } }] },
+          Set:        { number: setNum },
+          Weight:     { number: weight ?? null },
+          Reps:       { number: reps ?? null },
+          Done:       { checkbox: true },
+          Bodyweight: { checkbox: isBodyweight ?? false },
+          Seconds:    { number: seconds > 0 ? seconds : null },
+          Exercise:   { relation: [{ id: exerciseId }] },
+          Workout:    { relation: [{ id: workoutId }] },
         },
       });
 
@@ -249,6 +252,60 @@ export default async function handler(req, res) {
         date: workout.properties.Date?.date?.start ?? '',
         exercises,
       });
+    }
+
+    // ── POST: migrate-logbook-schema ────────────────────────────────────────
+    if (action === 'migrate-logbook-schema' && req.method === 'POST') {
+      await notion(`/databases/${DB.logbook}`, 'PATCH', {
+        properties: {
+          'Bodyweight': { checkbox: {} },
+          'Seconds':    { number: { format: 'number' } },
+        },
+      });
+      return res.json({ ok: true, message: 'Added Bodyweight + Seconds to logbook' });
+    }
+
+    // ── POST: migrate-merge-calf ─────────────────────────────────────────────
+    if (action === 'migrate-merge-calf' && req.method === 'POST') {
+      // 1. Find Calf and Calves pages
+      const mgData = await notion(`/databases/${DB.muscleGroups}/query`, 'POST', { page_size: 50 });
+      const calfPage   = mgData.results.find(p => p.properties.Name?.title?.[0]?.plain_text === 'Calf');
+      const calvesPage = mgData.results.find(p => p.properties.Name?.title?.[0]?.plain_text === 'Calves');
+
+      if (!calfPage)   return res.json({ ok: true, message: 'No Calf group found — already merged?' });
+      if (!calvesPage) return res.status(400).json({ error: 'Calves group not found' });
+
+      const calfId   = calfPage.id;
+      const calvesId = calvesPage.id;
+
+      // 2. Find all exercises linked to Calf (paginated)
+      let exercises = [], cursor;
+      do {
+        const data = await notion(`/databases/${DB.exercises}/query`, 'POST', {
+          filter: { property: 'Muscle Group', relation: { contains: calfId } },
+          page_size: 100,
+          ...(cursor ? { start_cursor: cursor } : {}),
+        });
+        exercises = exercises.concat(data.results);
+        cursor = data.has_more ? data.next_cursor : undefined;
+      } while (cursor);
+
+      // 3. Re-link each exercise from Calf → Calves
+      let updated = 0;
+      for (const ex of exercises) {
+        const ids = (ex.properties['Muscle Group']?.relation ?? []).map(r => r.id);
+        const newIds = ids.filter(id => id !== calfId);
+        if (!newIds.includes(calvesId)) newIds.push(calvesId);
+        await notion(`/pages/${ex.id}`, 'PATCH', {
+          properties: { 'Muscle Group': { relation: newIds.map(id => ({ id })) } },
+        });
+        updated++;
+      }
+
+      // 4. Archive the Calf page
+      await notion(`/pages/${calfId}`, 'PATCH', { archived: true });
+
+      return res.json({ ok: true, exercisesUpdated: updated, calfId, calvesId });
     }
 
     // ── POST: create-exercise ────────────────────────────────────────────────
