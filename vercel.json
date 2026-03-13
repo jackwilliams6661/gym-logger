@@ -3,7 +3,7 @@
   "functions": {
     "api/notion.js": {
       "memory": 128,
-      "maxDuration": 15
+      "maxDuration": 30
     }
   }
 }

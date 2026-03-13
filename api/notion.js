@@ -317,15 +317,14 @@ export default async function handler(req, res) {
         'Shoulders': '💪', 'Traps': '🔱', 'Triceps': '💪',
       };
       const mgData = await notion(`/databases/${DB.muscleGroups}/query`, 'POST', { page_size: 50 });
-      const results = [];
-      for (const p of mgData.results) {
-        const name = p.properties.Name?.title?.[0]?.plain_text;
-        const emoji = ICONS[name];
-        if (emoji) {
-          await notion(`/pages/${p.id}`, 'PATCH', { icon: { type: 'emoji', emoji } });
-          results.push({ name, emoji });
-        }
-      }
+      const tasks = mgData.results
+        .map(p => ({ id: p.id, name: p.properties.Name?.title?.[0]?.plain_text }))
+        .filter(({ name }) => ICONS[name])
+        .map(({ id, name }) =>
+          notion(`/pages/${id}`, 'PATCH', { icon: { type: 'emoji', emoji: ICONS[name] } })
+            .then(() => ({ name, emoji: ICONS[name] }))
+        );
+      const results = await Promise.all(tasks);
       return res.json({ ok: true, updated: results });
     }
 
