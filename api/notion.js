@@ -308,6 +308,27 @@ export default async function handler(req, res) {
       return res.json({ ok: true, exercisesUpdated: updated, calfId, calvesId });
     }
 
+    // ── POST: migrate-set-muscle-icons ─────────────────────────────────────
+    if (action === 'migrate-set-muscle-icons' && req.method === 'POST') {
+      const ICONS = {
+        'Abs': '⚡', 'Core': '⚡', 'Back': '🏋️', 'Biceps': '💪',
+        'Calves': '🦵', 'Chest': '🫁', 'Glutes': '🍑',
+        'Hamstrings': '🦵', 'Lower Back': '🦴', 'Quadriceps': '🦵',
+        'Shoulders': '💪', 'Traps': '🔱', 'Triceps': '💪',
+      };
+      const mgData = await notion(`/databases/${DB.muscleGroups}/query`, 'POST', { page_size: 50 });
+      const results = [];
+      for (const p of mgData.results) {
+        const name = p.properties.Name?.title?.[0]?.plain_text;
+        const emoji = ICONS[name];
+        if (emoji) {
+          await notion(`/pages/${p.id}`, 'PATCH', { icon: { type: 'emoji', emoji } });
+          results.push({ name, emoji });
+        }
+      }
+      return res.json({ ok: true, updated: results });
+    }
+
     // ── POST: create-exercise ────────────────────────────────────────────────
     if (action === 'create-exercise' && req.method === 'POST') {
       const { name, muscleGroupId } = req.body ?? {};
