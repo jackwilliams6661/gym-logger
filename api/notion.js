@@ -348,6 +348,56 @@ export default async function handler(req, res) {
       return res.json({ id: page.id, name });
     }
 
+    // ── GET: logbook-schema ──────────────────────────────────────────────────
+    if (action === 'logbook-schema') {
+      const db = await notion(`/databases/${DB.logbook}`);
+      const props = Object.entries(db.properties).map(([name, p]) => ({ name, type: p.type }));
+      return res.json(props);
+    }
+
+    // ── POST: backfill-seconds ───────────────────────────────────────────────
+    if (action === 'backfill-seconds' && req.method === 'POST') {
+      // Page through all logbook entries and populate Seconds from Notes text
+      let all = [], cursor;
+      do {
+        const data = await notion(`/databases/${DB.logbook}/query`, 'POST', {
+          page_size: 100,
+          ...(cursor ? { start_cursor: cursor } : {}),
+        });
+        all = all.concat(data.results);
+        cursor = data.has_more ? data.next_cursor : undefined;
+      } while (cursor);
+
+      // Filter to entries that have seconds in Notes but null Seconds property
+      const toUpdate = all.filter(p => {
+        const notes = p.properties.Notes?.title?.[0]?.plain_text ?? '';
+        const hasSeconds = / · \d+s/.test(notes);
+        const currentSeconds = p.properties.Seconds?.number;
+        return hasSeconds && (currentSeconds === null || currentSeconds === undefined);
+      });
+
+      // Update in parallel batches of 10 to avoid rate limits
+      let updated = 0;
+      for (let i = 0; i < toUpdate.length; i += 10) {
+        const batch = toUpdate.slice(i, i + 10);
+        await Promise.all(batch.map(p => {
+          const notes = p.properties.Notes?.title?.[0]?.plain_text ?? '';
+          const match = notes.match(/ · (\d+)s/);
+          const seconds = match ? parseInt(match[1]) : null;
+          const isBodyweight = notes.includes(' · BW');
+          return notion(`/pages/${p.id}`, 'PATCH', {
+            properties: {
+              Seconds:    { number: seconds },
+              Bodyweight: { checkbox: isBodyweight },
+            },
+          });
+        }));
+        updated += batch.length;
+      }
+
+      return res.json({ ok: true, total: all.length, backfilled: updated });
+    }
+
     // ── Unknown action ───────────────────────────────────────────────────────
     return res.status(400).json({ error: `Unknown action: ${action}` });
 
