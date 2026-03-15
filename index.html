@@ -680,8 +680,12 @@ function updateExNextBtn() {
     : 'Start Logging →';
 }
 
-function addMoreExercises() {
+async function addMoreExercises() {
   // Allow any muscle group, not just previously selected
+  if (!S.loaded) {
+    await loadData();
+  }
+  renderMuscleGrid();
   showView('view-muscles');
 }
 
