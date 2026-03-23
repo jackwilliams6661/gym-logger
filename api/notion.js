@@ -15,6 +15,7 @@ const DB = {
   exercises:    '1ddf12561537813eb539fefcacfb0ea4',
   workouts:     '1ddf125615378124baeccdc8fe75791b',
   logbook:      '1ddf12561537817dae9acd0367ba6ace',
+  weightLog:    'a794383f29d641c88d6861b1c8b3dc67',
 };
 
 // ── Notion fetch helper ───────────────────────────────────────────────────────
@@ -396,6 +397,243 @@ export default async function handler(req, res) {
       }
 
       return res.json({ ok: true, total: all.length, backfilled: updated });
+    }
+
+    // ── GET: dashboard-weight ────────────────────────────────────────────────
+    if (action === 'dashboard-weight') {
+      let all = [], cursor;
+      do {
+        const data = await notion(`/databases/${DB.weightLog}/query`, 'POST', {
+          sorts: [{ property: 'Date', direction: 'ascending' }],
+          page_size: 100,
+          ...(cursor ? { start_cursor: cursor } : {}),
+        });
+        all = all.concat(data.results);
+        cursor = data.has_more ? data.next_cursor : undefined;
+      } while (cursor);
+
+      const entries = all
+        .map(p => ({
+          date:   p.properties.Date?.date?.start ?? '',
+          weight: p.properties['Weight (kg)']?.number ?? null,
+          bmi:    p.properties.BMI?.number ?? null,
+          phase:  p.properties.Phase?.select?.name ?? null,
+          delta:  p.properties['Δ vs Start (kg)']?.number ?? null,
+        }))
+        .filter(e => e.date && e.weight !== null);
+
+      const current = entries.length > 0 ? entries[entries.length - 1] : null;
+      const start   = entries.length > 0 ? entries[0] : null;
+
+      return res.json({ entries, current, start });
+    }
+
+    // ── GET: dashboard-training ──────────────────────────────────────────────
+    if (action === 'dashboard-training') {
+      // 1. Fetch muscle groups
+      const mgData = await notion(`/databases/${DB.muscleGroups}/query`, 'POST', { page_size: 50 });
+      const muscleGroupMap = new Map(
+        mgData.results.map(p => [p.id, p.properties.Name?.title?.[0]?.plain_text ?? 'Unknown'])
+      );
+
+      // 2. Fetch all exercises (to map exercise → muscle groups)
+      let allExercises = [], cur1;
+      do {
+        const data = await notion(`/databases/${DB.exercises}/query`, 'POST', {
+          page_size: 100,
+          ...(cur1 ? { start_cursor: cur1 } : {}),
+        });
+        allExercises = allExercises.concat(data.results);
+        cur1 = data.has_more ? data.next_cursor : undefined;
+      } while (cur1);
+
+      const exerciseMap = new Map(
+        allExercises.map(p => [
+          p.id,
+          { muscleGroupIds: (p.properties['Muscle Group']?.relation ?? []).map(r => r.id) },
+        ])
+      );
+
+      // 3. Fetch workouts in last 8 weeks (non-templates)
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 56);
+      const dateFrom = cutoff.toISOString().split('T')[0];
+
+      let allWorkouts = [], cur2;
+      do {
+        const data = await notion(`/databases/${DB.workouts}/query`, 'POST', {
+          filter: {
+            and: [
+              { property: 'Is Template', checkbox: { equals: false } },
+              { property: 'Date', date: { on_or_after: dateFrom } },
+            ],
+          },
+          sorts: [{ property: 'Date', direction: 'descending' }],
+          page_size: 100,
+          ...(cur2 ? { start_cursor: cur2 } : {}),
+        });
+        allWorkouts = allWorkouts.concat(data.results);
+        cur2 = data.has_more ? data.next_cursor : undefined;
+      } while (cur2);
+
+      const workouts = allWorkouts.map(p => ({
+        id:   p.id,
+        name: p.properties.Name?.title?.[0]?.plain_text ?? 'Workout',
+        date: p.properties.Date?.date?.start ?? '',
+      }));
+
+      // 4. Fetch logbook entries for each workout (parallel, cap at 25)
+      const toFetch = workouts.slice(0, 25);
+      const logbooksByWorkout = await Promise.all(
+        toFetch.map(async w => {
+          let sets = [], c;
+          do {
+            const d = await notion(`/databases/${DB.logbook}/query`, 'POST', {
+              filter: { property: 'Workout', relation: { contains: w.id } },
+              page_size: 100,
+              ...(c ? { start_cursor: c } : {}),
+            });
+            sets = sets.concat(d.results);
+            c = d.has_more ? d.next_cursor : undefined;
+          } while (c);
+          return { workoutId: w.id, sets };
+        })
+      );
+
+      // 5. Aggregate: weekly sessions + muscle group totals + recent sessions
+      const weeklyMap = new Map();
+      const muscleGroupTotals = new Map();
+      const recentSessions = [];
+
+      for (const w of toFetch) {
+        const logData = logbooksByWorkout.find(l => l.workoutId === w.id);
+        if (!logData || !w.date) continue;
+
+        // Muscle groups for this workout
+        const workoutMGs = new Set();
+        for (const entry of logData.sets) {
+          const exId = entry.properties.Exercise?.relation?.[0]?.id;
+          if (exId && exerciseMap.has(exId)) {
+            for (const mgId of exerciseMap.get(exId).muscleGroupIds) {
+              const mgName = muscleGroupMap.get(mgId);
+              if (mgName) {
+                workoutMGs.add(mgName);
+                muscleGroupTotals.set(mgName, (muscleGroupTotals.get(mgName) ?? 0) + 1);
+              }
+            }
+          }
+        }
+
+        // ISO week start (Monday)
+        const d = new Date(w.date + 'T00:00:00');
+        const monday = new Date(d);
+        monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+        const weekKey   = monday.toISOString().split('T')[0];
+        const weekLabel = monday.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+        if (!weeklyMap.has(weekKey)) weeklyMap.set(weekKey, { label: weekLabel, count: 0 });
+        weeklyMap.get(weekKey).count++;
+
+        if (recentSessions.length < 10) {
+          recentSessions.push({
+            id: w.id, name: w.name, date: w.date,
+            muscleGroups: [...workoutMGs],
+            setCount: logData.sets.length,
+          });
+        }
+      }
+
+      const weeklySessions = [...weeklyMap.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([, v]) => ({ label: v.label, count: v.count }));
+
+      const muscleGroupBreakdown = [...muscleGroupTotals.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({ name, count }));
+
+      return res.json({
+        weeklySessions,
+        muscleGroupBreakdown,
+        recentSessions,
+        totalWorkouts: workouts.length,
+      });
+    }
+
+    // ── GET: dashboard-strength ──────────────────────────────────────────────
+    if (action === 'dashboard-strength') {
+      // 1. Fetch muscle groups
+      const mgData = await notion(`/databases/${DB.muscleGroups}/query`, 'POST', { page_size: 50 });
+      const muscleGroupMap = new Map(
+        mgData.results.map(p => [p.id, p.properties.Name?.title?.[0]?.plain_text ?? 'Unknown'])
+      );
+
+      // 2. Fetch all exercises with Best Weight rollup
+      let allExercises = [], cursor;
+      do {
+        const data = await notion(`/databases/${DB.exercises}/query`, 'POST', {
+          page_size: 100,
+          ...(cursor ? { start_cursor: cursor } : {}),
+        });
+        allExercises = allExercises.concat(data.results);
+        cursor = data.has_more ? data.next_cursor : undefined;
+      } while (cursor);
+
+      // Filter to exercises with a recorded Best Weight, take top 15
+      const topExercises = allExercises
+        .map(p => ({
+          id:             p.id,
+          name:           p.properties.Name?.title?.[0]?.plain_text ?? 'Unknown',
+          bestWeight:     p.properties['Best Weight']?.rollup?.number ?? null,
+          muscleGroupIds: (p.properties['Muscle Group']?.relation ?? []).map(r => r.id),
+        }))
+        .filter(e => e.bestWeight !== null && e.bestWeight > 0)
+        .sort((a, b) => b.bestWeight - a.bestWeight)
+        .slice(0, 15);
+
+      // 3. Fetch logbook entries for each exercise in parallel
+      const logbookByExercise = await Promise.all(
+        topExercises.map(async ex => {
+          let sets = [], c;
+          do {
+            const d = await notion(`/databases/${DB.logbook}/query`, 'POST', {
+              filter: { property: 'Exercise', relation: { contains: ex.id } },
+              page_size: 100,
+              ...(c ? { start_cursor: c } : {}),
+            });
+            sets = sets.concat(d.results);
+            c = d.has_more ? d.next_cursor : undefined;
+          } while (c);
+          return { exerciseId: ex.id, sets };
+        })
+      );
+
+      // 4. Compute per-rep-range maxes
+      const REP_RANGES = [1, 3, 5, 8, 10, 12, 15];
+      const exercises = topExercises.map(ex => {
+        const logData = logbookByExercise.find(l => l.exerciseId === ex.id);
+        const repMaxes = {};
+        if (logData) {
+          for (const range of REP_RANGES) {
+            const best = logData.sets
+              .filter(s => {
+                const reps   = s.properties.Reps?.number;
+                const weight = s.properties.Weight?.number;
+                return reps != null && reps <= range && weight != null && weight > 0;
+              })
+              .reduce((max, s) => Math.max(max, s.properties.Weight.number), 0);
+            if (best > 0) repMaxes[range] = best;
+          }
+        }
+        return {
+          name:        ex.name,
+          muscleGroup: ex.muscleGroupIds.length > 0
+            ? (muscleGroupMap.get(ex.muscleGroupIds[0]) ?? 'Unknown')
+            : 'Unknown',
+          bestWeight:  ex.bestWeight,
+          repMaxes,
+        };
+      });
+
+      return res.json({ exercises });
     }
 
     // ── Unknown action ───────────────────────────────────────────────────────
