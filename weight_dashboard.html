@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⚖️ Weight & Body Composition — Jack</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0d1117;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      min-height: 100vh;
+      padding: 28px 32px;
+    }
+
+    /* ── Header ─────────────────────────────── */
+    .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; }
+    .header-left h1 { font-size: 20px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.02em; }
+    .header-left p  { font-size: 12px; color: #475569; margin-top: 4px; }
+    .badge {
+      background: rgba(249,115,22,0.15); border: 1px solid rgba(249,115,22,0.35);
+      color: #fb923c; border-radius: 99px; padding: 4px 12px; font-size: 12px; font-weight: 600;
+    }
+
+    /* ── KPI Row ─────────────────────────────── */
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+    .kpi {
+      background: #161b27; border: 1px solid #1e2535;
+      border-radius: 14px; padding: 18px 20px;
+    }
+    .kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #475569; margin-bottom: 10px; }
+    .kpi-value { font-size: 30px; font-weight: 800; color: #f1f5f9; line-height: 1; }
+    .kpi-value span { font-size: 14px; font-weight: 500; color: #64748b; margin-left: 2px; }
+    .kpi-sub { font-size: 11px; color: #475569; margin-top: 6px; }
+    .kpi-pill {
+      display: inline-block; font-size: 11px; font-weight: 600;
+      padding: 2px 8px; border-radius: 99px; margin-top: 6px;
+    }
+    .pill-green { background: rgba(34,197,94,0.12); color: #4ade80; }
+    .pill-yellow { background: rgba(234,179,8,0.12); color: #fbbf24; }
+    .pill-orange { background: rgba(249,115,22,0.12); color: #fb923c; }
+    .pill-purple { background: rgba(139,92,246,0.12); color: #a78bfa; }
+
+    /* ── Main Charts ─────────────────────────── */
+    .charts-row { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; margin-bottom: 20px; }
+    .card {
+      background: #161b27; border: 1px solid #1e2535;
+      border-radius: 14px; padding: 20px 22px;
+    }
+    .card-title { font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .card-title::before { content: ''; width: 3px; height: 14px; background: #6366f1; border-radius: 2px; }
+
+    .phase-legend { display: flex; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #64748b; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+    /* ── Phase Stats ─────────────────────────── */
+    .phase-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-box { background: #0d1117; border-radius: 10px; padding: 14px; }
+    .stat-box .s-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #475569; margin-bottom: 6px; }
+    .stat-box .s-val { font-size: 20px; font-weight: 700; }
+    .stat-box .s-note { font-size: 10px; color: #475569; margin-top: 3px; }
+
+    /* ── Progress Section ────────────────────── */
+    .progress-section { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+    .progress-card { background: #161b27; border: 1px solid #1e2535; border-radius: 14px; padding: 20px 22px; }
+
+    .pb-row { margin-bottom: 18px; }
+    .pb-row:last-child { margin-bottom: 0; }
+    .pb-meta { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+    .pb-label { font-size: 12px; color: #94a3b8; }
+    .pb-pct { font-size: 13px; font-weight: 700; }
+    .pb-track { background: #0d1117; border-radius: 99px; height: 8px; overflow: hidden; }
+    .pb-fill { height: 100%; border-radius: 99px; }
+    .fill-green  { background: linear-gradient(90deg, #16a34a, #4ade80); }
+    .fill-purple { background: linear-gradient(90deg, #6366f1, #a78bfa); }
+    .fill-orange { background: linear-gradient(90deg, #ea580c, #fb923c); }
+    .fill-blue   { background: linear-gradient(90deg, #0ea5e9, #38bdf8); }
+
+    /* ── Timeline ────────────────────────────── */
+    .timeline { display: flex; flex-direction: column; gap: 0; }
+    .tl-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid #1a2030; }
+    .tl-item:last-child { border-bottom: none; }
+    .tl-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+    .tl-date { font-size: 11px; color: #475569; min-width: 70px; }
+    .tl-body { flex: 1; }
+    .tl-weight { font-size: 14px; font-weight: 700; color: #f1f5f9; }
+    .tl-delta { font-size: 11px; margin-top: 2px; }
+
+    footer { text-align: center; font-size: 11px; color: #334155; padding-top: 20px; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>⚖️ Weight &amp; Body Composition</h1>
+      <p>Retatrutide Protocol · Started 12 Jan 2026 · Last weigh-in 12 Mar 2026</p>
+    </div>
+    <div class="badge">🟠 Phase 3 — 4 mg/wk</div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="kpi-label">Current Weight</div>
+      <div class="kpi-value">116.9 <span>kg</span></div>
+      <div class="kpi-sub">Logged 12 Mar 2026</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Total Lost</div>
+      <div class="kpi-value" style="color:#4ade80">−8.0 <span style="color:#4ade80">kg</span></div>
+      <div class="kpi-pill pill-green">▼ From 124.9 kg</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Current BMI</div>
+      <div class="kpi-value">31.1</div>
+      <div class="kpi-pill pill-yellow">↓ from 33.2</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Avg Loss / Week</div>
+      <div class="kpi-value" style="color:#a78bfa">−0.98 <span>kg</span></div>
+      <div class="kpi-sub">Over 8.1 weeks</div>
+    </div>
+  </div>
+
+  <!-- Weight Chart + Phase Stats -->
+  <div class="charts-row">
+    <div class="card">
+      <div class="card-title">Weight Trend — Jan to Mar 2026</div>
+      <canvas id="weightChart" height="190"></canvas>
+      <div class="phase-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div> Phase 1 — 2 mg/wk</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fbbf24"></div> Phase 2 — 3 mg/wk</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fb923c"></div> Phase 3 — 4 mg/wk</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Phase Breakdown</div>
+      <div class="phase-stats">
+        <div class="stat-box">
+          <div class="s-label">Phase 1 Loss</div>
+          <div class="s-val" style="color:#818cf8">−5.7 kg</div>
+          <div class="s-note">12 Jan → 12 Feb</div>
+        </div>
+        <div class="stat-box">
+          <div class="s-label">Phase 2 Loss</div>
+          <div class="s-val" style="color:#fbbf24">−2.3 kg</div>
+          <div class="s-note">12 Feb → 5 Mar</div>
+        </div>
+        <div class="stat-box">
+          <div class="s-label">Phase 3 So Far</div>
+          <div class="s-val" style="color:#fb923c">−0.3 kg</div>
+          <div class="s-note">5 Mar →</div>
+        </div>
+        <div class="stat-box">
+          <div class="s-label">Best Week</div>
+          <div class="s-val" style="color:#4ade80">−2.3 kg</div>
+          <div class="s-note">w/e 19 Jan 2026</div>
+        </div>
+        <div class="stat-box">
+          <div class="s-label">Start</div>
+          <div class="s-val">124.9 kg</div>
+          <div class="s-note">12 Jan 2026</div>
+        </div>
+        <div class="stat-box">
+          <div class="s-label">To BMI 27</div>
+          <div class="s-val" style="color:#38bdf8">~15.3 kg</div>
+          <div class="s-note">target ~101.6 kg</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Progress Bars + Timeline -->
+  <div class="progress-section">
+    <div class="progress-card">
+      <div class="card-title">Goal Progress</div>
+      <div class="pb-row">
+        <div class="pb-meta">
+          <span class="pb-label">Weight Goal — 124.9 → 100 kg</span>
+          <span class="pb-pct" style="color:#4ade80">32%</span>
+        </div>
+        <div class="pb-track"><div class="pb-fill fill-green" style="width:32%"></div></div>
+      </div>
+      <div class="pb-row">
+        <div class="pb-meta">
+          <span class="pb-label">BMI Progress — 33.2 → 27.0</span>
+          <span class="pb-pct" style="color:#a78bfa">34%</span>
+        </div>
+        <div class="pb-track"><div class="pb-fill fill-purple" style="width:34%"></div></div>
+      </div>
+      <div class="pb-row">
+        <div class="pb-meta">
+          <span class="pb-label">Protocol Phase — Phase 3 of 4</span>
+          <span class="pb-pct" style="color:#fb923c">75%</span>
+        </div>
+        <div class="pb-track"><div class="pb-fill fill-orange" style="width:75%"></div></div>
+      </div>
+      <div class="pb-row">
+        <div class="pb-meta">
+          <span class="pb-label">8-Week Streak Goal (4 weigh-ins/wk)</span>
+          <span class="pb-pct" style="color:#38bdf8">60%</span>
+        </div>
+        <div class="pb-track"><div class="pb-fill fill-blue" style="width:60%"></div></div>
+      </div>
+    </div>
+
+    <div class="progress-card">
+      <div class="card-title">Weigh-in Log</div>
+      <div class="timeline">
+        <div class="tl-item">
+          <div class="tl-dot" style="background:#fb923c"></div>
+          <div class="tl-date">12 Mar 2026</div>
+          <div class="tl-body">
+            <div class="tl-weight">116.9 kg</div>
+            <div class="tl-delta" style="color:#fb923c">Phase 3 · BMI 31.1 · Δ −8.0 kg</div>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="background:#fbbf24"></div>
+          <div class="tl-date">26 Feb 2026</div>
+          <div class="tl-body">
+            <div class="tl-weight">117.2 kg</div>
+            <div class="tl-delta" style="color:#fbbf24">Phase 2 · BMI 31.1 · Δ −7.7 kg</div>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="background:#fbbf24"></div>
+          <div class="tl-date">14 Feb 2026</div>
+          <div class="tl-body">
+            <div class="tl-weight">118.6 kg</div>
+            <div class="tl-delta" style="color:#fbbf24">Phase 2 · BMI 31.5 · Δ −6.3 kg</div>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="background:#818cf8"></div>
+          <div class="tl-date">8 Feb 2026</div>
+          <div class="tl-body">
+            <div class="tl-weight">119.2 kg</div>
+            <div class="tl-delta" style="color:#818cf8">Phase 1 · BMI 31.7 · Δ −5.7 kg</div>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="background:#818cf8"></div>
+          <div class="tl-date">19 Jan 2026</div>
+          <div class="tl-body">
+            <div class="tl-weight">121.3 kg</div>
+            <div class="tl-delta" style="color:#818cf8">Phase 1 · BMI 32.2 · Δ −3.6 kg</div>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="background:#818cf8"></div>
+          <div class="tl-date">12 Jan 2026</div>
+          <div class="tl-body">
+            <div class="tl-weight">124.9 kg</div>
+            <div class="tl-delta" style="color:#64748b">🚀 Start · BMI 33.2 · Day 1</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>Dashboard generated from Notion · Workout Tracker · Jack · March 2026</footer>
+
+  <script>
+    const labels = ['12 Jan','17 Jan','18 Jan','19 Jan','27 Jan','2 Feb','8 Feb','13 Feb','14 Feb','23 Feb','26 Feb','12 Mar'];
+    const weights = [124.9, 122.0, 122.1, 121.3, 121.8, 121.5, 119.2, 118.6, 118.6, 119.5, 117.2, 116.9];
+    const phases  = [1,1,1,1,1,1,1,2,2,2,2,3];
+    const ptColors = phases.map(p => p===1 ? '#818cf8' : p===2 ? '#fbbf24' : '#fb923c');
+
+    const ctx = document.getElementById('weightChart').getContext('2d');
+
+    // gradient fill
+    const grad = ctx.createLinearGradient(0, 0, 0, 300);
+    grad.addColorStop(0, 'rgba(99,102,241,0.18)');
+    grad.addColorStop(1, 'rgba(99,102,241,0.00)');
+
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data: weights,
+          borderColor: '#6366f1',
+          backgroundColor: grad,
+          borderWidth: 2.5,
+          pointBackgroundColor: ptColors,
+          pointBorderColor: ptColors,
+          pointRadius: 6,
+          pointHoverRadius: 8,
+          tension: 0.35,
+          fill: true,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e2535',
+            borderColor: '#2d3a50',
+            borderWidth: 1,
+            titleColor: '#94a3b8',
+            bodyColor: '#f1f5f9',
+            padding: 10,
+            callbacks: {
+              title: items => items[0].label,
+              label: item => {
+                const kg = item.raw;
+                const delta = (kg - 124.9).toFixed(1);
+                const phase = ['Phase 1','Phase 1','Phase 1','Phase 1','Phase 1','Phase 1','Phase 1','Phase 2','Phase 2','Phase 2','Phase 2','Phase 3'][item.dataIndex];
+                return [` Weight: ${kg} kg`, ` Δ Start: ${delta} kg`, ` ${phase}`];
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: '#1a2030' },
+            ticks: { color: '#475569', font: { size: 10 }, maxRotation: 30 }
+          },
+          y: {
+            min: 113, max: 127,
+            grid: { color: '#1a2030' },
+            ticks: {
+              color: '#475569', font: { size: 10 },
+              callback: v => v + ' kg',
+              stepSize: 2
+            }
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>
