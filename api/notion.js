@@ -606,21 +606,19 @@ export default async function handler(req, res) {
         })
       );
 
-      // 4. Compute per-rep-range maxes
-      const REP_RANGES = [1, 3, 5, 8, 10, 12, 15];
+      // 4. Compute per-rep-range maxes (best weight for exact rep count)
       const exercises = topExercises.map(ex => {
         const logData = logbookByExercise.find(l => l.exerciseId === ex.id);
         const repMaxes = {};
         if (logData) {
-          for (const range of REP_RANGES) {
-            const best = logData.sets
-              .filter(s => {
-                const reps   = s.properties.Reps?.number;
-                const weight = s.properties.Weight?.number;
-                return reps != null && reps <= range && weight != null && weight > 0;
-              })
-              .reduce((max, s) => Math.max(max, s.properties.Weight.number), 0);
-            if (best > 0) repMaxes[range] = best;
+          for (const set of logData.sets) {
+            const reps   = set.properties.Reps?.number;
+            const weight = set.properties.Weight?.number;
+            if (reps != null && reps > 0 && weight != null && weight > 0) {
+              if (repMaxes[reps] == null || weight > repMaxes[reps]) {
+                repMaxes[reps] = weight;
+              }
+            }
           }
         }
         return {
