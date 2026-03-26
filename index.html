@@ -426,6 +426,16 @@
   </div>
 </div>
 
+<!-- Set Action Sheet (edit/delete a logged set) -->
+<div class="action-overlay" id="set-action-overlay" onclick="closeSetActionSheet(event)">
+  <div class="action-sheet">
+    <div class="action-sheet-title" id="set-action-title">Set</div>
+    <button class="action-btn" onclick="editSet()">✏️ Edit Set</button>
+    <button class="action-btn danger" onclick="confirmDeleteSet()">🗑 Delete Set</button>
+    <button class="action-btn cancel" onclick="hideSetActionSheet()">Cancel</button>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -457,6 +467,7 @@ const S = {
   // History detail
   detailWorkout: null,
   actionWorkout: null,   // { id, name } for the action sheet
+  actionSet: null,       // { exIdx, setIdx } for the set action sheet
 };
 
 // ════════════════════════════════════════════════════
@@ -829,7 +840,7 @@ function renderWorkout() {
     ${repsCardHtml}
     <div class="sets-area">
       <div class="sets-title">Sets logged this session</div>
-      <div class="sets-grid" id="sets-grid">${renderSetPills(ex)}</div>
+      <div class="sets-grid" id="sets-grid">${renderSetPills(ex, S.activeExIdx)}</div>
     </div>`;
 }
 
@@ -894,13 +905,18 @@ function fmtSetPill(s) {
   return `${wt} × ${s.reps}`;
 }
 
-function renderSetPills(ex) {
+function renderSetPills(ex, exIdx) {
   if (ex.sets.length === 0)
     return '<div style="color:#444; font-size:13px; margin-top:4px;">No sets yet — log your first one above</div>';
   return ex.sets.map((s, i) => `
-    <div class="set-pill ${i === ex.sets.length - 1 ? 'fresh' : ''}">
+    <div class="set-pill ${i === ex.sets.length - 1 ? 'fresh' : ''}"
+      onpointerdown="setPillPressStart(event,${exIdx},${i})"
+      onpointerup="setPillPressEnd()"
+      onpointerleave="setPillPressEnd()"
+      oncontextmenu="return false">
       <span class="sn">S${i + 1}</span>
       <span>${fmtSetPill(s)}</span>
+      <span style="color:#444; font-size:11px; margin-left:auto; padding-left:6px;">hold</span>
     </div>`).join('');
 }
 
@@ -1083,6 +1099,113 @@ async function loadHistory() {
       </div>`).join('');
   } catch (e) {
     content.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Could not load history</div>';
+  }
+}
+
+// ── Long-press / action sheet for set pills ──────────────────────────────
+let _spTimer = null;
+let _spFired = false;
+
+function setPillPressStart(e, exIdx, setIdx) {
+  _spFired = false;
+  _spTimer = setTimeout(() => {
+    _spFired = true;
+    navigator.vibrate && navigator.vibrate(30);
+    showSetActionSheet(exIdx, setIdx);
+  }, 500);
+}
+
+function setPillPressEnd() { clearTimeout(_spTimer); }
+
+function showSetActionSheet(exIdx, setIdx) {
+  S.actionSet = { exIdx, setIdx };
+  const ex = S.workoutExercises[exIdx];
+  const s = ex.sets[setIdx];
+  document.getElementById('set-action-title').textContent = `${ex.name} — S${setIdx + 1}: ${fmtSetPill(s)}`;
+  document.getElementById('set-action-overlay').classList.add('show');
+}
+
+function hideSetActionSheet() {
+  document.getElementById('set-action-overlay').classList.remove('show');
+  S.actionSet = null;
+}
+
+function closeSetActionSheet(e) {
+  if (e.target === document.getElementById('set-action-overlay')) hideSetActionSheet();
+}
+
+async function editSet() {
+  const { exIdx, setIdx } = S.actionSet;
+  hideSetActionSheet();
+  const ex = S.workoutExercises[exIdx];
+  const s = ex.sets[setIdx];
+
+  // Edit weight (skip if bodyweight)
+  let newWeight = s.weight;
+  if (!s.isBodyweight) {
+    const wVal = prompt('Weight (kg):', s.weight ?? '');
+    if (wVal === null) return;
+    const wNum = parseFloat(wVal);
+    if (isNaN(wNum) || wNum < 0) { toast('Invalid weight'); return; }
+    newWeight = Math.round(wNum * 10) / 10;
+  }
+
+  // Edit reps or hold time
+  let newReps = s.reps;
+  let newSeconds = s.seconds || 0;
+  if (s.repsNA) {
+    const sVal = prompt('Hold time (seconds):', s.seconds ?? 30);
+    if (sVal === null) return;
+    const sNum = parseInt(sVal);
+    if (isNaN(sNum) || sNum < 1) { toast('Invalid time'); return; }
+    newSeconds = sNum;
+  } else {
+    const rVal = prompt('Reps:', s.reps ?? '');
+    if (rVal === null) return;
+    const rNum = parseInt(rVal);
+    if (isNaN(rNum) || rNum < 1) { toast('Invalid reps'); return; }
+    newReps = rNum;
+  }
+
+  s.weight = newWeight;
+  s.reps = newReps;
+  s.seconds = newSeconds;
+  renderWorkout();
+  toast(`S${setIdx + 1} updated ✓`);
+
+  if (s.notionId) {
+    try {
+      await api('update-set', 'POST', {
+        setId: s.notionId,
+        exerciseName: ex.name,
+        setNum: setIdx + 1,
+        weight: newWeight,
+        reps: newReps,
+        isBodyweight: s.isBodyweight,
+        seconds: newSeconds,
+      });
+    } catch (e) { console.warn('Could not update set in Notion:', e); }
+  }
+}
+
+async function confirmDeleteSet() {
+  const { exIdx, setIdx } = S.actionSet;
+  hideSetActionSheet();
+  const ex = S.workoutExercises[exIdx];
+  const s = ex.sets[setIdx];
+
+  if (!confirm(`Delete S${setIdx + 1}: ${fmtSetPill(s)}?`)) return;
+
+  const notionId = s.notionId;
+  ex.sets.splice(setIdx, 1);
+  ex.sets.forEach((s, i) => { s.setNum = i + 1; });
+  renderWorkout();
+  toast(`S${setIdx + 1} deleted`);
+
+  if (notionId) {
+    try {
+      await api('delete-set', 'POST', { setId: notionId });
+    } catch (e) { console.warn('Could not delete set in Notion:', e); }
   }
 }
 

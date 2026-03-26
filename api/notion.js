@@ -142,6 +142,34 @@ export default async function handler(req, res) {
       return res.json({ id: page.id });
     }
 
+    // ── POST: update-set ─────────────────────────────────────────────────────
+    if (action === 'update-set' && req.method === 'POST') {
+      const { setId, exerciseName, setNum, weight, reps, isBodyweight, seconds } = req.body ?? {};
+      if (!setId) return res.status(400).json({ error: 'setId required' });
+
+      let notes = `${exerciseName} · Set ${setNum}`;
+      if (isBodyweight) notes += ' · BW';
+      if (seconds > 0) notes += ` · ${seconds}s`;
+
+      await notion(`/pages/${setId}`, 'PATCH', {
+        properties: {
+          Notes:   { title: [{ text: { content: notes } }] },
+          Weight:  { number: weight ?? null },
+          Reps:    { number: reps ?? null },
+          Seconds: { number: seconds > 0 ? seconds : null },
+        },
+      });
+      return res.json({ ok: true });
+    }
+
+    // ── POST: delete-set ─────────────────────────────────────────────────────
+    if (action === 'delete-set' && req.method === 'POST') {
+      const { setId } = req.body ?? {};
+      if (!setId) return res.status(400).json({ error: 'setId required' });
+      await notion(`/pages/${setId}`, 'PATCH', { archived: true });
+      return res.json({ ok: true });
+    }
+
     // ── POST: delete-workout ─────────────────────────────────────────────────
     if (action === 'delete-workout' && req.method === 'POST') {
       const { workoutId } = req.body ?? {};
