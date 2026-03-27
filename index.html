@@ -66,6 +66,38 @@
     .btn-row { display: flex; gap: 10px; }
     .btn-row .btn { flex: 1; }
 
+    /* ── Home Tiles (Style C — Frosted Glass) ── */
+    .home-start-tile {
+      width: 100%; padding: 26px 22px;
+      background: linear-gradient(135deg, #ff6b35 0%, #ff4500 100%);
+      box-shadow: 0 8px 32px rgba(255,107,53,0.35), inset 0 1px 0 rgba(255,255,255,0.2);
+      border-radius: 22px; border: none; cursor: pointer; color: #fff;
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 12px; transition: transform 0.1s, box-shadow 0.1s;
+      text-align: left;
+    }
+    .home-start-tile:active { transform: scale(0.97); box-shadow: 0 4px 16px rgba(255,107,53,0.25); }
+    .home-start-tile:disabled { background: linear-gradient(135deg, #3a2820, #2a1a10); box-shadow: none; opacity: 0.5; }
+    .home-start-tile .ht-icon { font-size: 38px; flex-shrink: 0; }
+    .home-start-tile .ht-label { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+    .home-start-tile .ht-sub { font-size: 13px; color: rgba(255,255,255,0.65); margin-top: 3px; }
+
+    .home-tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .home-tile {
+      padding: 20px 16px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.07);
+      cursor: pointer; text-decoration: none; color: #fff;
+      display: block; transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .home-tile:active { transform: scale(0.97); background: rgba(255,255,255,0.08); }
+    .home-tile .ht-icon { font-size: 28px; margin-bottom: 12px; display: block; }
+    .home-tile .ht-label { font-size: 14px; font-weight: 700; letter-spacing: -0.2px; line-height: 1.2; }
+    .home-tile .ht-sub { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 4px; }
+
     /* ── Cards ── */
     .card { background: #1a1a1a; border-radius: 14px; border: 1.5px solid #2a2a2a; }
     .card-sm { padding: 14px 16px; }
@@ -285,11 +317,38 @@
       <div class="sb-body">The app is running but can't reach your Notion yet. Workouts will be saved locally and you can sync them manually. See the README for setup instructions.</div>
     </div>
 
-    <button class="btn btn-primary" id="start-btn" onclick="startNewWorkout()">Start Workout</button>
-    <button class="btn btn-secondary" style="margin-top:10px;" onclick="goToHistory()">View History</button>
-    <a href="/strength_dashboard.html" target="_blank" class="btn btn-secondary" style="margin-top:10px; display:block; text-align:center; text-decoration:none;">🏆 My PBs</a>
-    <button class="btn btn-secondary" style="margin-top:10px;" onclick="showView('view-weight-log')">⚖️ Import Weight CSV</button>
-    <a href="/weight_dashboard.html" target="_blank" class="btn btn-secondary" style="margin-top:10px; display:block; text-align:center; text-decoration:none;">📈 Weight Progress</a>
+    <!-- Start Workout — full-width glass CTA -->
+    <button class="home-start-tile" id="start-btn" onclick="startNewWorkout()">
+      <span class="ht-icon">🏋️</span>
+      <span>
+        <span class="ht-label">Start Workout</span>
+        <span class="ht-sub" style="display:block;">Begin a new training session</span>
+      </span>
+    </button>
+
+    <!-- 2×2 frosted tile grid -->
+    <div class="home-tile-grid">
+      <button class="home-tile" onclick="goToHistory()">
+        <span class="ht-icon">📋</span>
+        <span class="ht-label">History</span>
+        <span class="ht-sub">Past sessions</span>
+      </button>
+      <a class="home-tile" href="/strength_dashboard.html" target="_blank">
+        <span class="ht-icon">🏆</span>
+        <span class="ht-label">My PBs</span>
+        <span class="ht-sub">Personal bests</span>
+      </a>
+      <button class="home-tile" onclick="showView('view-weight-log')">
+        <span class="ht-icon">⚖️</span>
+        <span class="ht-label">Import CSV</span>
+        <span class="ht-sub">Weight data</span>
+      </button>
+      <a class="home-tile" href="/weight_dashboard.html" target="_blank">
+        <span class="ht-icon">📈</span>
+        <span class="ht-label">Progress</span>
+        <span class="ht-sub">Weight chart</span>
+      </a>
+    </div>
   </div>
 </div>
 
