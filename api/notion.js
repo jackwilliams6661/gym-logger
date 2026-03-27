@@ -442,18 +442,114 @@ export default async function handler(req, res) {
 
       const entries = all
         .map(p => ({
-          date:   p.properties.Date?.date?.start ?? '',
-          weight: p.properties['Weight (kg)']?.number ?? null,
-          bmi:    p.properties.BMI?.number ?? null,
-          phase:  p.properties.Phase?.select?.name ?? null,
-          delta:  p.properties['Δ vs Start (kg)']?.number ?? null,
+          date:    p.properties.Date?.date?.start ?? '',
+          weight:  p.properties['Weight (kg)']?.number ?? null,
+          bmi:     p.properties.BMI?.number ?? null,
+          phase:   p.properties.Phase?.select?.name ?? null,
+          delta:   p.properties['Δ vs Start (kg)']?.number ?? null,
+          bodyFat: p.properties['Body Fat (%)']?.number ?? null,
+          water:   p.properties['Water (%)']?.number ?? null,
+          muscle:  p.properties['Muscle (%)']?.number ?? null,
+          bone:    p.properties['Bone (kg)']?.number ?? null,
         }))
         .filter(e => e.date && e.weight !== null);
 
       const current = entries.length > 0 ? entries[entries.length - 1] : null;
       const start   = entries.length > 0 ? entries[0] : null;
+      const currentBodyComp = [...entries].reverse().find(e =>
+        e.bodyFat != null || e.water != null || e.muscle != null || e.bone != null
+      ) ?? null;
+      const startBodyComp = entries.find(e =>
+        e.bodyFat != null || e.water != null || e.muscle != null || e.bone != null
+      ) ?? null;
 
-      return res.json({ entries, current, start });
+      return res.json({ entries, current, start, currentBodyComp, startBodyComp });
+    }
+
+    // ── POST: log-weight ─────────────────────────────────────────────────────
+    if (action === 'log-weight' && req.method === 'POST') {
+      const { date, weight, bmi, bodyFat, water, muscle, bone } = req.body ?? {};
+      if (!weight) return res.status(400).json({ error: 'weight required' });
+
+      const entryDate = date ?? new Date().toISOString().split('T')[0];
+      const shortDate = new Date(entryDate + 'T00:00:00')
+        .toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+
+      const props = {
+        Name:          { title: [{ text: { content: `${shortDate} — ${weight}kg` } }] },
+        Date:          { date: { start: entryDate } },
+        'Weight (kg)': { number: weight },
+      };
+      if (bmi     != null) props['BMI']          = { number: bmi };
+      if (bodyFat != null) props['Body Fat (%)'] = { number: bodyFat };
+      if (water   != null) props['Water (%)']    = { number: water };
+      if (muscle  != null) props['Muscle (%)']   = { number: muscle };
+      if (bone    != null) props['Bone (kg)']    = { number: bone };
+
+      const page = await notion('/pages', 'POST', {
+        parent: { database_id: DB.weightLog },
+        properties: props,
+      });
+      return res.json({ id: page.id });
+    }
+
+    // ── POST: batch-log-weight ───────────────────────────────────────────────
+    if (action === 'batch-log-weight' && req.method === 'POST') {
+      const { entries } = req.body ?? {};
+      if (!Array.isArray(entries) || entries.length === 0) {
+        return res.status(400).json({ error: 'entries array required' });
+      }
+
+      let imported = 0;
+      const errors = [];
+
+      // Process in batches of 5 to stay within Notion rate limits
+      for (let i = 0; i < entries.length; i += 5) {
+        const batch = entries.slice(i, i + 5);
+        const results = await Promise.allSettled(batch.map(async (entry) => {
+          const { date, weight, bmi, bodyFat, water, muscle, bone } = entry;
+          if (!weight) throw new Error('missing weight');
+
+          const shortDate = new Date(date + 'T00:00:00')
+            .toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+
+          const props = {
+            Name:          { title: [{ text: { content: `${shortDate} — ${weight}kg` } }] },
+            Date:          { date: { start: date } },
+            'Weight (kg)': { number: weight },
+          };
+          if (bmi     != null) props['BMI']          = { number: bmi };
+          if (bodyFat != null) props['Body Fat (%)'] = { number: bodyFat };
+          if (water   != null) props['Water (%)']    = { number: water };
+          if (muscle  != null) props['Muscle (%)']   = { number: muscle };
+          if (bone    != null) props['Bone (kg)']    = { number: bone };
+
+          return notion('/pages', 'POST', {
+            parent: { database_id: DB.weightLog },
+            properties: props,
+          });
+        }));
+
+        for (const result of results) {
+          if (result.status === 'fulfilled') imported++;
+          else errors.push(result.reason?.message ?? 'unknown error');
+        }
+      }
+
+      return res.json({ ok: true, imported, total: entries.length, errors });
+    }
+
+    // ── POST: migrate-weight-schema ──────────────────────────────────────────
+    if (action === 'migrate-weight-schema' && req.method === 'POST') {
+      await notion(`/databases/${DB.weightLog}`, 'PATCH', {
+        properties: {
+          'Body Fat (%)': { number: { format: 'number' } },
+          'Water (%)':    { number: { format: 'number' } },
+          'Muscle (%)':   { number: { format: 'number' } },
+          'Bone (kg)':    { number: { format: 'number' } },
+        },
+      });
+      return res.json({ ok: true, message: 'Added body composition columns to weight log' });
     }
 
     // ── GET: dashboard-training ──────────────────────────────────────────────

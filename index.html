@@ -288,6 +288,8 @@
     <button class="btn btn-primary" id="start-btn" onclick="startNewWorkout()">Start Workout</button>
     <button class="btn btn-secondary" style="margin-top:10px;" onclick="goToHistory()">View History</button>
     <a href="/strength_dashboard.html" target="_blank" class="btn btn-secondary" style="margin-top:10px; display:block; text-align:center; text-decoration:none;">🏆 My PBs</a>
+    <button class="btn btn-secondary" style="margin-top:10px;" onclick="showView('view-weight-log')">⚖️ Import Weight CSV</button>
+    <a href="/weight_dashboard.html" target="_blank" class="btn btn-secondary" style="margin-top:10px; display:block; text-align:center; text-decoration:none;">📈 Weight Progress</a>
   </div>
 </div>
 
@@ -413,6 +415,48 @@
   </div>
   <div class="bottom-bar" id="detail-bottom" style="display:none;">
     <button class="btn btn-primary" onclick="resumeWorkout()">⚡ Continue This Workout</button>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     VIEW 8 — IMPORT WEIGHT CSV
+═══════════════════════════════════════════ -->
+<div id="view-weight-log" class="view">
+  <div class="header">
+    <button class="back-btn" onclick="showView('view-home')">← Back</button>
+    <h1>⚖️ Import Weight</h1>
+    <div class="header-sub">Health Manager Pro CSV</div>
+  </div>
+  <div class="content">
+
+    <!-- Upload zone -->
+    <div id="wl-upload-zone">
+      <input type="file" id="wl-file-input" accept=".csv,text/csv" style="display:none;" onchange="handleCSVFile(event)">
+      <div class="card" style="text-align:center; padding:40px 20px; border-style:dashed; cursor:pointer;" onclick="document.getElementById('wl-file-input').click()">
+        <div style="font-size:48px; margin-bottom:14px;">📂</div>
+        <div style="font-size:17px; font-weight:700; margin-bottom:6px;">Select CSV File</div>
+        <div style="font-size:13px; color:#666; line-height:1.6;">Export from Health Manager Pro<br>then tap here to select it</div>
+      </div>
+    </div>
+
+    <!-- Preview (shown after parsing) -->
+    <div id="wl-preview" style="display:none;">
+      <div class="section-title" id="wl-preview-title" style="margin-bottom:12px;"></div>
+      <div id="wl-preview-list"></div>
+    </div>
+
+    <!-- Result (shown after import) -->
+    <div id="wl-result" style="display:none; text-align:center; padding:40px 16px;">
+      <div id="wl-result-icon" style="font-size:52px; margin-bottom:14px;"></div>
+      <div id="wl-result-text" style="font-size:19px; font-weight:800; margin-bottom:6px;"></div>
+      <div id="wl-result-sub" style="font-size:13px; color:#666; line-height:1.6;"></div>
+    </div>
+
+  </div>
+  <div class="bottom-bar" id="wl-bottom" style="display:none;">
+    <button class="btn btn-primary" id="wl-import-btn" onclick="importWeightCSV()">Import to Notion</button>
+    <button class="btn btn-secondary" id="wl-reset-btn" onclick="resetWeightImport()">Choose Different File</button>
   </div>
 </div>
 
@@ -714,6 +758,7 @@ function showView(id) {
   if (id === 'view-history') loadHistory();
   if (id === 'view-home') updateHomeBanner();
   if (id === 'view-exercises') renderExerciseList();
+  if (id === 'view-weight-log') openWeightLog();
 }
 
 function renderWorkout() {
@@ -1378,6 +1423,154 @@ function resumeWorkout() {
 
   toast('Resumed — carry on! 💪');
   showView('view-workout');
+}
+
+// ════════════════════════════════════════════════════
+//  WEIGHT CSV IMPORT
+// ════════════════════════════════════════════════════
+let wlParsedEntries = [];
+
+function openWeightLog() {
+  resetWeightImport();
+}
+
+function resetWeightImport() {
+  wlParsedEntries = [];
+  document.getElementById('wl-upload-zone').style.display = 'block';
+  document.getElementById('wl-preview').style.display = 'none';
+  document.getElementById('wl-result').style.display = 'none';
+  document.getElementById('wl-bottom').style.display = 'none';
+  document.getElementById('wl-file-input').value = '';
+  const btn = document.getElementById('wl-import-btn');
+  btn.textContent = 'Import to Notion';
+  btn.onclick = importWeightCSV;
+  btn.disabled = false;
+  btn.style.background = '';
+  document.getElementById('wl-reset-btn').style.display = 'block';
+}
+
+function handleCSVFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      wlParsedEntries = parseHealthManagerCSV(e.target.result);
+      if (wlParsedEntries.length === 0) { toast('No valid entries found in CSV'); return; }
+      showCSVPreview(wlParsedEntries);
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function parseHealthManagerCSV(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+
+  // Find the data header row: "Date;Time;kg;BMI;..."
+  const headerIdx = lines.findIndex(l => l.startsWith('Date;Time;'));
+  if (headerIdx === -1) throw new Error('Invalid file — not a Health Manager Pro export');
+
+  const entries = [];
+  for (const line of lines.slice(headerIdx + 1)) {
+    const cols = line.split(';');
+    if (cols.length < 3) continue;
+
+    // Convert DD/MM/YYYY → YYYY-MM-DD
+    const dp = cols[0].split('/');
+    if (dp.length !== 3) continue;
+    const isoDate = `${dp[2]}-${dp[1].padStart(2,'0')}-${dp[0].padStart(2,'0')}`;
+
+    const weight = parseFloat(cols[2]);
+    if (isNaN(weight) || weight <= 0) continue;
+
+    // Parse optional numeric fields (empty string → null)
+    const p = str => { const v = parseFloat(str); return isNaN(v) ? null : v; };
+    entries.push({
+      date:    isoDate,
+      weight,
+      bmi:     p(cols[3]),
+      bodyFat: p(cols[4]),
+      water:   p(cols[5]),
+      muscle:  p(cols[6]),
+      bone:    p(cols[7]),
+    });
+  }
+  return entries;
+}
+
+function showCSVPreview(entries) {
+  document.getElementById('wl-upload-zone').style.display = 'none';
+  document.getElementById('wl-result').style.display = 'none';
+
+  const first = entries[0].date;
+  const last  = entries[entries.length - 1].date;
+  const withComp = entries.filter(e => e.bodyFat !== null).length;
+
+  document.getElementById('wl-preview-title').textContent =
+    `${entries.length} entries · ${fmtDateFromStr(first)} → ${fmtDateFromStr(last)} · ${withComp} with body comp`;
+
+  const previewRows = entries.slice(0, 12).map(e => `
+    <div class="card card-sm" style="margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+      <div style="min-width:0;">
+        <div style="font-size:14px; font-weight:700;">${fmtDateFromStr(e.date)}</div>
+        <div style="font-size:11px; color:#666; margin-top:2px; white-space:nowrap;">
+          ${e.bodyFat !== null ? `Fat ${e.bodyFat}%` : ''}${e.bodyFat !== null && e.muscle !== null ? ' · ' : ''}${e.muscle !== null ? `Muscle ${e.muscle}%` : ''}${e.bodyFat === null && e.muscle === null ? 'Weight only' : ''}
+        </div>
+      </div>
+      <div style="font-size:20px; font-weight:800; color:#ff6b35; flex-shrink:0;">${e.weight.toFixed(1)}<span style="font-size:11px; font-weight:400; color:#666;"> kg</span></div>
+    </div>`).join('');
+
+  const moreText = entries.length > 12
+    ? `<div style="text-align:center; color:#555; font-size:13px; padding:10px 0;">…and ${entries.length - 12} more entries</div>`
+    : '';
+
+  document.getElementById('wl-preview-list').innerHTML = previewRows + moreText;
+  document.getElementById('wl-preview').style.display = 'block';
+  document.getElementById('wl-bottom').style.display = 'flex';
+
+  const btn = document.getElementById('wl-import-btn');
+  btn.textContent = `Import ${entries.length} Entries to Notion`;
+  btn.onclick = importWeightCSV;
+  btn.disabled = false;
+  btn.style.background = '';
+}
+
+async function importWeightCSV() {
+  if (!wlParsedEntries.length) return;
+
+  const btn = document.getElementById('wl-import-btn');
+  btn.disabled = true;
+  document.getElementById('wl-preview').style.display = 'none';
+  document.getElementById('wl-bottom').style.display = 'none';
+  document.getElementById('wl-result').style.display = 'block';
+  document.getElementById('wl-result-icon').textContent = '⏳';
+  document.getElementById('wl-result-text').textContent = 'Importing…';
+  document.getElementById('wl-result-sub').textContent = `Sending ${wlParsedEntries.length} entries to Notion`;
+
+  try {
+    const result = await api('batch-log-weight', 'POST', { entries: wlParsedEntries });
+
+    document.getElementById('wl-result-icon').textContent = result.errors?.length > 0 ? '⚠️' : '✅';
+    document.getElementById('wl-result-text').textContent = `${result.imported} of ${result.total} imported`;
+    document.getElementById('wl-result-sub').textContent = result.errors?.length > 0
+      ? `${result.errors.length} entries failed — check Notion for details`
+      : 'All entries saved to Notion successfully';
+
+    document.getElementById('wl-bottom').innerHTML = `
+      <button class="btn btn-primary" onclick="resetWeightImport()">Import Another File</button>
+      <button class="btn btn-secondary" onclick="showView('view-home')">Done</button>`;
+    document.getElementById('wl-bottom').style.display = 'flex';
+  } catch (e) {
+    document.getElementById('wl-result-icon').textContent = '❌';
+    document.getElementById('wl-result-text').textContent = 'Import failed';
+    document.getElementById('wl-result-sub').textContent = e.message;
+    document.getElementById('wl-bottom').innerHTML = `
+      <button class="btn btn-primary" onclick="importWeightCSV()">Retry</button>
+      <button class="btn btn-secondary" onclick="resetWeightImport()">Choose Different File</button>`;
+    document.getElementById('wl-bottom').style.display = 'flex';
+  }
 }
 
 // ════════════════════════════════════════════════════

@@ -11,18 +11,22 @@
       --bg: #0d1117; --surface: #161b22; --border: #21262d;
       --accent: #6366f1; --accent2: #818cf8; --text: #e6edf3;
       --muted: #8b949e; --green: #3fb950; --red: #f85149;
+      --blue: #38bdf8; --orange: #fb923c; --yellow: #fbbf24;
     }
     body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; padding: 24px; }
     header { margin-bottom: 28px; }
     header h1 { font-size: 1.6rem; font-weight: 700; }
     header p  { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
-    .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 28px; }
+    .section-label { font-size: 0.72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; margin: 28px 0 12px; }
+    .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 8px; }
     .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
     .kpi-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
     .kpi-value { font-size: 1.8rem; font-weight: 700; line-height: 1; }
     .kpi-sub   { font-size: 0.78rem; color: var(--muted); margin-top: 6px; }
     .kpi-value.pos { color: var(--red); }
     .kpi-value.neg { color: var(--green); }
+    .kpi-value.good { color: var(--green); }
+    .kpi-value.neutral { color: var(--blue); }
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
     .card-title { font-size: 0.78rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 16px; }
     .chart-wrap { position: relative; height: 280px; }
@@ -31,6 +35,9 @@
     .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .err { color: var(--red); padding: 20px; text-align: center; font-size: 0.9rem; }
+    .legend-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--muted); }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -39,18 +46,43 @@
     <p id="subtitle">Loading from Notion…</p>
   </header>
 
-  <div class="kpi-row" id="kpis">
-    <div class="loading"><span class="spinner"></span> Fetching data…</div>
-  </div>
+  <div class="loading" id="main-loading"><span class="spinner"></span> Fetching data…</div>
 
-  <div class="card">
-    <div class="card-title">Weight Over Time (kg)</div>
-    <div class="chart-wrap"><canvas id="weightChart"></canvas></div>
-  </div>
+  <div id="main-content" style="display:none;">
+    <!-- ── Weight KPIs ── -->
+    <div class="section-label">Body Weight</div>
+    <div class="kpi-row" id="weight-kpis"></div>
 
-  <div class="card" id="bmiCard">
-    <div class="card-title">BMI Over Time</div>
-    <div class="chart-wrap"><canvas id="bmiChart"></canvas></div>
+    <!-- ── Body Composition KPIs ── -->
+    <div id="body-comp-section" style="display:none;">
+      <div class="section-label">Body Composition</div>
+      <div class="kpi-row" id="body-comp-kpis"></div>
+    </div>
+
+    <!-- ── Weight chart ── -->
+    <div class="card">
+      <div class="card-title">Weight Over Time (kg)</div>
+      <div class="chart-wrap"><canvas id="weightChart"></canvas></div>
+    </div>
+
+    <!-- ── BMI chart ── -->
+    <div class="card" id="bmiCard">
+      <div class="card-title">BMI Over Time</div>
+      <div class="chart-wrap"><canvas id="bmiChart"></canvas></div>
+    </div>
+
+    <!-- ── Body Composition chart ── -->
+    <div class="card" id="bodyCompCard" style="display:none;">
+      <div class="card-title">Body Composition Over Time</div>
+      <div class="legend-row" id="bodyCompLegend"></div>
+      <div class="chart-wrap"><canvas id="bodyCompChart"></canvas></div>
+    </div>
+
+    <!-- ── Bone mass chart ── -->
+    <div class="card" id="boneCard" style="display:none;">
+      <div class="card-title">Bone Mass Over Time (kg)</div>
+      <div class="chart-wrap"><canvas id="boneChart"></canvas></div>
+    </div>
   </div>
 
   <script>
@@ -74,14 +106,27 @@
       return 'Obese';
     }
 
-    function renderKPIs({ current, start, entries }) {
-      if (!current) { document.getElementById('kpis').innerHTML = '<p class="err">No weight entries found.</p>'; return; }
+    const chartBase = {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: '#1c2128', borderColor: '#30363d', borderWidth: 1, titleColor: '#e6edf3', bodyColor: '#8b949e' },
+      },
+      scales: {
+        x: { ticks: { color: '#8b949e', maxTicksLimit: 10, maxRotation: 0 }, grid: { color: '#21262d' } },
+        y: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+      },
+    };
+
+    function renderWeightKPIs({ current, start, entries }) {
+      if (!current) { document.getElementById('weight-kpis').innerHTML = '<p class="err">No weight entries found.</p>'; return; }
       const delta = current.delta ?? (start ? +(current.weight - start.weight).toFixed(1) : null);
       const dClass = delta != null ? (delta <= 0 ? 'neg' : 'pos') : '';
       const dSign  = delta != null && delta > 0 ? '+' : '';
       document.getElementById('subtitle').textContent =
         `Last updated ${fmtDate(current.date)} · ${entries.length} entries logged`;
-      document.getElementById('kpis').innerHTML = `
+      document.getElementById('weight-kpis').innerHTML = `
         <div class="kpi">
           <div class="kpi-label">Current Weight</div>
           <div class="kpi-value">${current.weight.toFixed(1)}<small style="font-size:1rem;font-weight:400"> kg</small></div>
@@ -104,39 +149,154 @@
         </div>`;
     }
 
-    function renderCharts({ entries }) {
+    function renderBodyCompKPIs({ currentBodyComp, startBodyComp }) {
+      if (!currentBodyComp) return;
+      const section = document.getElementById('body-comp-section');
+      section.style.display = 'block';
+
+      const kpiItems = [];
+
+      if (currentBodyComp.bodyFat != null) {
+        const delta = startBodyComp?.bodyFat != null ? +(currentBodyComp.bodyFat - startBodyComp.bodyFat).toFixed(1) : null;
+        const dClass = delta != null ? (delta <= 0 ? 'neg' : 'pos') : '';
+        const dSign  = delta != null && delta > 0 ? '+' : '';
+        kpiItems.push(`
+          <div class="kpi">
+            <div class="kpi-label">Body Fat</div>
+            <div class="kpi-value ${dClass}">${currentBodyComp.bodyFat.toFixed(1)}<small style="font-size:1rem;font-weight:400"> %</small></div>
+            <div class="kpi-sub">${delta != null ? dSign + delta.toFixed(1) + '% from start' : fmtDate(currentBodyComp.date)}</div>
+          </div>`);
+      }
+
+      if (currentBodyComp.muscle != null) {
+        const delta = startBodyComp?.muscle != null ? +(currentBodyComp.muscle - startBodyComp.muscle).toFixed(1) : null;
+        const dClass = delta != null ? (delta >= 0 ? 'good' : 'pos') : '';
+        const dSign  = delta != null && delta > 0 ? '+' : '';
+        kpiItems.push(`
+          <div class="kpi">
+            <div class="kpi-label">Muscle</div>
+            <div class="kpi-value ${dClass}">${currentBodyComp.muscle.toFixed(1)}<small style="font-size:1rem;font-weight:400"> %</small></div>
+            <div class="kpi-sub">${delta != null ? dSign + delta.toFixed(1) + '% from start' : fmtDate(currentBodyComp.date)}</div>
+          </div>`);
+      }
+
+      if (currentBodyComp.water != null) {
+        kpiItems.push(`
+          <div class="kpi">
+            <div class="kpi-label">Water</div>
+            <div class="kpi-value neutral">${currentBodyComp.water.toFixed(1)}<small style="font-size:1rem;font-weight:400"> %</small></div>
+            <div class="kpi-sub">${fmtDate(currentBodyComp.date)}</div>
+          </div>`);
+      }
+
+      if (currentBodyComp.bone != null) {
+        const delta = startBodyComp?.bone != null ? +(currentBodyComp.bone - startBodyComp.bone).toFixed(2) : null;
+        const dSign  = delta != null && delta > 0 ? '+' : '';
+        kpiItems.push(`
+          <div class="kpi">
+            <div class="kpi-label">Bone Mass</div>
+            <div class="kpi-value">${currentBodyComp.bone.toFixed(2)}<small style="font-size:1rem;font-weight:400"> kg</small></div>
+            <div class="kpi-sub">${delta != null ? dSign + delta.toFixed(2) + ' kg from start' : fmtDate(currentBodyComp.date)}</div>
+          </div>`);
+      }
+
+      document.getElementById('body-comp-kpis').innerHTML = kpiItems.join('');
+    }
+
+    function renderWeightCharts({ entries }) {
       const labels  = entries.map(e => fmtDate(e.date));
       const weights = entries.map(e => e.weight);
       const bmis    = entries.map(e => e.bmi);
       const ptColors = entries.map(e => phaseColor(e.phase));
 
-      const base = {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { display: false },
-          tooltip: { backgroundColor: '#1c2128', borderColor: '#30363d', borderWidth: 1, titleColor: '#e6edf3', bodyColor: '#8b949e' },
-        },
-        scales: {
-          x: { ticks: { color: '#8b949e', maxTicksLimit: 10, maxRotation: 0 }, grid: { color: '#21262d' } },
-          y: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
-        },
-      };
-
       new Chart(document.getElementById('weightChart'), {
         type: 'line',
         data: { labels, datasets: [{ data: weights, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', pointBackgroundColor: ptColors, pointRadius: 4, pointHoverRadius: 7, tension: 0.35, fill: true }] },
-        options: { ...base, plugins: { ...base.plugins, tooltip: { ...base.plugins.tooltip, callbacks: { label: c => ` ${c.raw.toFixed(1)} kg`, afterLabel: c => entries[c.dataIndex].phase ? ` ${entries[c.dataIndex].phase}` : '' } } }, scales: { ...base.scales, y: { ...base.scales.y, ticks: { color: '#8b949e', callback: v => v + ' kg' } } } },
+        options: { ...chartBase, plugins: { ...chartBase.plugins, tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: c => ` ${c.raw.toFixed(1)} kg`, afterLabel: c => entries[c.dataIndex].phase ? ` ${entries[c.dataIndex].phase}` : '' } } }, scales: { ...chartBase.scales, y: { ...chartBase.scales.y, ticks: { color: '#8b949e', callback: v => v + ' kg' } } } },
       });
 
       if (bmis.some(b => b != null)) {
         new Chart(document.getElementById('bmiChart'), {
           type: 'line',
           data: { labels, datasets: [{ data: bmis, borderColor: '#818cf8', backgroundColor: 'rgba(129,140,248,0.08)', pointBackgroundColor: ptColors, pointRadius: 4, pointHoverRadius: 7, tension: 0.35, fill: true }] },
-          options: { ...base, plugins: { ...base.plugins, tooltip: { ...base.plugins.tooltip, callbacks: { label: c => ` BMI ${c.raw != null ? c.raw.toFixed(1) : '—'}` } } } },
+          options: { ...chartBase, plugins: { ...chartBase.plugins, tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: c => ` BMI ${c.raw != null ? c.raw.toFixed(1) : '—'}` } } } },
         });
       } else {
         document.getElementById('bmiCard').style.display = 'none';
+      }
+    }
+
+    function renderBodyCompCharts({ entries }) {
+      // Filter entries with any body comp data
+      const compEntries = entries.filter(e =>
+        e.bodyFat != null || e.water != null || e.muscle != null
+      );
+      const boneEntries = entries.filter(e => e.bone != null);
+
+      if (compEntries.length > 1) {
+        document.getElementById('bodyCompCard').style.display = 'block';
+        const labels = compEntries.map(e => fmtDate(e.date));
+        const datasets = [];
+        const legendItems = [];
+
+        const series = [
+          { key: 'bodyFat', label: 'Body Fat', color: '#f85149' },
+          { key: 'water',   label: 'Water',    color: '#38bdf8' },
+          { key: 'muscle',  label: 'Muscle',   color: '#3fb950' },
+        ];
+
+        for (const { key, label, color } of series) {
+          const data = compEntries.map(e => e[key]);
+          if (data.some(v => v != null)) {
+            datasets.push({
+              label,
+              data,
+              borderColor: color,
+              backgroundColor: color + '18',
+              pointBackgroundColor: color,
+              pointRadius: 3,
+              pointHoverRadius: 6,
+              tension: 0.35,
+              fill: false,
+              spanGaps: true,
+            });
+            legendItems.push(`<div class="legend-item"><div class="legend-dot" style="background:${color}"></div>${label} (%)</div>`);
+          }
+        }
+
+        document.getElementById('bodyCompLegend').innerHTML = legendItems.join('');
+
+        new Chart(document.getElementById('bodyCompChart'), {
+          type: 'line',
+          data: { labels, datasets },
+          options: {
+            ...chartBase,
+            plugins: {
+              ...chartBase.plugins,
+              legend: { display: false },
+              tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: c => ` ${c.dataset.label}: ${c.raw != null ? c.raw.toFixed(1) + '%' : '—'}` } },
+            },
+            scales: {
+              ...chartBase.scales,
+              y: { ...chartBase.scales.y, ticks: { color: '#8b949e', callback: v => v + '%' } },
+            },
+          },
+        });
+      }
+
+      if (boneEntries.length > 1) {
+        document.getElementById('boneCard').style.display = 'block';
+        const boneLabels = boneEntries.map(e => fmtDate(e.date));
+        const boneData   = boneEntries.map(e => e.bone);
+        new Chart(document.getElementById('boneChart'), {
+          type: 'line',
+          data: { labels: boneLabels, datasets: [{ data: boneData, borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.1)', pointBackgroundColor: '#fbbf24', pointRadius: 3, pointHoverRadius: 6, tension: 0.35, fill: true }] },
+          options: {
+            ...chartBase,
+            plugins: { ...chartBase.plugins, tooltip: { ...chartBase.plugins.tooltip, callbacks: { label: c => ` Bone: ${c.raw.toFixed(2)} kg` } } },
+            scales: { ...chartBase.scales, y: { ...chartBase.scales.y, ticks: { color: '#8b949e', callback: v => v + ' kg' } } },
+          },
+        });
       }
     }
 
@@ -145,10 +305,16 @@
         const res = await fetch(API);
         if (!res.ok) throw new Error(`API ${res.status}`);
         const data = await res.json();
-        renderKPIs(data);
-        renderCharts(data);
+
+        document.getElementById('main-loading').style.display = 'none';
+        document.getElementById('main-content').style.display = 'block';
+
+        renderWeightKPIs(data);
+        renderBodyCompKPIs(data);
+        renderWeightCharts(data);
+        renderBodyCompCharts(data);
       } catch (err) {
-        document.getElementById('kpis').innerHTML = `<p class="err">Failed to load: ${err.message}</p>`;
+        document.getElementById('main-loading').innerHTML = `<p class="err">Failed to load: ${err.message}</p>`;
       }
     }
     init();
