@@ -71,24 +71,26 @@
   <script>
     const API = '/api/notion?action=dashboard-training';
 
+    // Named colours per muscle group — each visually distinct
     const MG_COLOR_MAP = {
-      'Chest':        '#f43f5e',
-      'Back':         '#10b981',
-      'Shoulders':    '#f59e0b',
-      'Biceps':       '#ec4899',
-      'Triceps':      '#8b5cf6',
-      'Arms':         '#fb7185',
-      'Legs':         '#3b82f6',
-      'Quadriceps':   '#60a5fa',
-      'Hamstrings':   '#06b6d4',
-      'Calves':       '#14b8a6',
-      'Glutes':       '#f97316',
-      'Abs':          '#eab308',
-      'Core':         '#facc15',
-      'Lower Back':   '#a78bfa',
-      'Traps':        '#fb923c',
-      'BW Hold':      '#64748b',
+      'Chest':        '#f43f5e',  // rose
+      'Back':         '#10b981',  // emerald
+      'Shoulders':    '#f59e0b',  // amber
+      'Biceps':       '#ec4899',  // pink
+      'Triceps':      '#8b5cf6',  // violet
+      'Arms':         '#fb7185',  // light rose
+      'Legs':         '#3b82f6',  // blue
+      'Quadriceps':   '#60a5fa',  // sky blue
+      'Hamstrings':   '#06b6d4',  // cyan
+      'Calves':       '#14b8a6',  // teal
+      'Glutes':       '#f97316',  // orange
+      'Abs':          '#eab308',  // yellow
+      'Core':         '#facc15',  // light yellow
+      'Lower Back':   '#a78bfa',  // lavender
+      'Traps':        '#fb923c',  // light orange
+      'BW Hold':      '#64748b',  // slate
     };
+    // Fallback palette for any unlisted groups — spread across spectrum
     const MG_FALLBACK = [
       '#f43f5e','#10b981','#f59e0b','#3b82f6','#8b5cf6',
       '#06b6d4','#f97316','#ec4899','#14b8a6','#eab308',
@@ -103,6 +105,7 @@
       }
       return _mgFallbackUsed[name];
     }
+    // Build ordered colour array for chart from live data labels
     function MG_COLORS(labels) { return labels.map(l => mgColor(l)); }
 
     const fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
@@ -114,10 +117,26 @@
       const thisWeek = weeklySessions.length > 0 ? weeklySessions[weeklySessions.length - 1].count : 0;
       const totalSets = recentSessions.reduce((s, r) => s + r.setCount, 0);
       document.getElementById('kpis').innerHTML = `
-        <div class="kpi"><div class="kpi-label">Workouts (8 wks)</div><div class="kpi-value">${totalWorkouts}</div><div class="kpi-sub">logged sessions</div></div>
-        <div class="kpi"><div class="kpi-label">Avg / Week</div><div class="kpi-value">${avgPerWeek}</div><div class="kpi-sub">over ${weeklySessions.length} weeks</div></div>
-        <div class="kpi"><div class="kpi-label">This Week</div><div class="kpi-value">${thisWeek}</div><div class="kpi-sub">sessions so far</div></div>
-        <div class="kpi"><div class="kpi-label">Sets (recent)</div><div class="kpi-value">${totalSets}</div><div class="kpi-sub">across ${recentSessions.length} sessions</div></div>`;
+        <div class="kpi">
+          <div class="kpi-label">Workouts (8 wks)</div>
+          <div class="kpi-value">${totalWorkouts}</div>
+          <div class="kpi-sub">logged sessions</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Avg / Week</div>
+          <div class="kpi-value">${avgPerWeek}</div>
+          <div class="kpi-sub">over ${weeklySessions.length} weeks</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">This Week</div>
+          <div class="kpi-value">${thisWeek}</div>
+          <div class="kpi-sub">sessions so far</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Sets (recent)</div>
+          <div class="kpi-value">${totalSets}</div>
+          <div class="kpi-sub">across ${recentSessions.length} sessions</div>
+        </div>`;
     }
 
     function renderWeeklyChart({ weeklySessions }) {
@@ -125,9 +144,22 @@
         type: 'bar',
         data: {
           labels: weeklySessions.map(w => w.label),
-          datasets: [{ data: weeklySessions.map(w => w.count), backgroundColor: weeklySessions.map((_, i) => i === weeklySessions.length - 1 ? '#10b981' : 'rgba(16,185,129,0.35)'), borderColor: weeklySessions.map((_, i) => i === weeklySessions.length - 1 ? '#34d399' : 'rgba(16,185,129,0.5)'), borderWidth: 1, borderRadius: 5 }],
+          datasets: [{
+            data: weeklySessions.map(w => w.count),
+            backgroundColor: weeklySessions.map((_, i) => i === weeklySessions.length - 1 ? '#10b981' : 'rgba(16,185,129,0.35)'),
+            borderColor: weeklySessions.map((_, i) => i === weeklySessions.length - 1 ? '#34d399' : 'rgba(16,185,129,0.5)'),
+            borderWidth: 1,
+            borderRadius: 5,
+          }],
         },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1a2332', borderColor: '#1e2733', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#64748b', callbacks: { label: c => ` ${c.raw} session${c.raw !== 1 ? 's' : ''}` } } }, scales: { x: { ticks: { color: '#64748b', maxRotation: 0 }, grid: { color: '#1e2733' } }, y: { ticks: { color: '#64748b', stepSize: 1 }, grid: { color: '#1e2733' }, min: 0 } } },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1a2332', borderColor: '#1e2733', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#64748b', callbacks: { label: c => ` ${c.raw} session${c.raw !== 1 ? 's' : ''}` } } },
+          scales: {
+            x: { ticks: { color: '#64748b', maxRotation: 0 }, grid: { color: '#1e2733' } },
+            y: { ticks: { color: '#64748b', stepSize: 1 }, grid: { color: '#1e2733' }, min: 0 },
+          },
+        },
       });
     }
 
@@ -135,13 +167,26 @@
       const top = muscleGroupBreakdown.slice(0, 10);
       new Chart(document.getElementById('donutChart'), {
         type: 'doughnut',
-        data: { labels: top.map(m => m.name), datasets: [{ data: top.map(m => m.count), backgroundColor: MG_COLORS(top.map(m => m.name)), borderColor: '#141b23', borderWidth: 2, hoverOffset: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { color: '#94a3b8', boxWidth: 12, font: { size: 11 }, padding: 10 } }, tooltip: { backgroundColor: '#1a2332', borderColor: '#1e2733', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#64748b', callbacks: { label: c => ` ${c.label}: ${c.raw} workout${c.raw !== 1 ? 's' : ''}` } } } },
+        data: {
+          labels: top.map(m => m.name),
+          datasets: [{ data: top.map(m => m.count), backgroundColor: MG_COLORS(top.map(m => m.name)), borderColor: '#141b23', borderWidth: 2, hoverOffset: 6 }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          cutout: '62%',
+          plugins: {
+            legend: { position: 'right', labels: { color: '#94a3b8', boxWidth: 12, font: { size: 11 }, padding: 10 } },
+            tooltip: { backgroundColor: '#1a2332', borderColor: '#1e2733', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#64748b', callbacks: { label: c => ` ${c.label}: ${c.raw} workout${c.raw !== 1 ? 's' : ''}` } },
+          },
+        },
       });
     }
 
     function renderSessions({ recentSessions }) {
-      if (!recentSessions.length) { document.getElementById('sessionList').innerHTML = '<p class="err">No recent sessions found.</p>'; return; }
+      if (!recentSessions.length) {
+        document.getElementById('sessionList').innerHTML = '<p class="err">No recent sessions found.</p>';
+        return;
+      }
       document.getElementById('sessionList').innerHTML = recentSessions.map(s => `
         <div class="session-item">
           <div class="session-date">${fmtDate(s.date)}</div>
@@ -158,8 +203,12 @@
         const res = await fetch(API);
         if (!res.ok) throw new Error(`API ${res.status}`);
         const data = await res.json();
-        document.getElementById('subtitle').textContent = `Last 8 weeks · ${data.totalWorkouts} sessions logged`;
-        renderKPIs(data); renderWeeklyChart(data); renderDonutChart(data); renderSessions(data);
+        document.getElementById('subtitle').textContent =
+          `Last 8 weeks · ${data.totalWorkouts} sessions logged`;
+        renderKPIs(data);
+        renderWeeklyChart(data);
+        renderDonutChart(data);
+        renderSessions(data);
       } catch (err) {
         document.getElementById('kpis').innerHTML = `<p class="err">Failed to load: ${err.message}</p>`;
         document.getElementById('sessionList').innerHTML = '';

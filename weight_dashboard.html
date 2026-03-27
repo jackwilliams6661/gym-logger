@@ -121,7 +121,7 @@
 
     function renderWeightKPIs({ current, start, entries }) {
       if (!current) { document.getElementById('weight-kpis').innerHTML = '<p class="err">No weight entries found.</p>'; return; }
-      const delta = current.delta ?? (start ? +(current.weight - start.weight).toFixed(1) : null);
+      const delta = start ? +(current.weight - start.weight).toFixed(1) : null;
       const dClass = delta != null ? (delta <= 0 ? 'neg' : 'pos') : '';
       const dSign  = delta != null && delta > 0 ? '+' : '';
       document.getElementById('subtitle').textContent =
