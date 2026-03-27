@@ -493,50 +493,113 @@ export default async function handler(req, res) {
       return res.json({ id: page.id });
     }
 
-    // ── POST: batch-log-weight ───────────────────────────────────────────────
+    // ── POST: batch-log-weight (kept for back-compat) ────────────────────────
+    // Prefer upsert-weight-entries for new imports.
     if (action === 'batch-log-weight' && req.method === 'POST') {
+      req.query.action = 'upsert-weight-entries';
+      // fall through to upsert handler below
+    }
+
+    // ── POST: upsert-weight-entries ──────────────────────────────────────────
+    // 1. Auto-migrates schema (adds body comp columns if missing)
+    // 2. Fetches existing Notion entries in the CSV date range
+    // 3. PATCHes entries that already exist (by date); POSTs new ones
+    if ((action === 'upsert-weight-entries' || action === 'batch-log-weight') && req.method === 'POST') {
       const { entries } = req.body ?? {};
       if (!Array.isArray(entries) || entries.length === 0) {
         return res.status(400).json({ error: 'entries array required' });
       }
 
-      let imported = 0;
+      // Step 1 — ensure body comp columns exist (idempotent)
+      try {
+        await notion(`/databases/${DB.weightLog}`, 'PATCH', {
+          properties: {
+            'Body Fat (%)': { number: { format: 'number' } },
+            'Water (%)':    { number: { format: 'number' } },
+            'Muscle (%)':   { number: { format: 'number' } },
+            'Bone (kg)':    { number: { format: 'number' } },
+          },
+        });
+      } catch (_) { /* columns may already exist */ }
+
+      // Step 2 — fetch existing Notion pages in the import date range
+      const sortedDates = entries.map(e => e.date).sort();
+      const minDate = sortedDates[0];
+      const maxDate = sortedDates[sortedDates.length - 1];
+
+      let existing = [], cur;
+      do {
+        const data = await notion(`/databases/${DB.weightLog}/query`, 'POST', {
+          filter: {
+            and: [
+              { property: 'Date', date: { on_or_after:  minDate } },
+              { property: 'Date', date: { on_or_before: maxDate } },
+            ],
+          },
+          page_size: 100,
+          ...(cur ? { start_cursor: cur } : {}),
+        });
+        existing = existing.concat(data.results);
+        cur = data.has_more ? data.next_cursor : undefined;
+      } while (cur);
+
+      // Build date → pageId map (first page per date wins)
+      const existingByDate = new Map();
+      for (const page of existing) {
+        const d = page.properties.Date?.date?.start;
+        if (d && !existingByDate.has(d)) existingByDate.set(d, page.id);
+      }
+
+      // Step 3 — upsert in batches of 5
+      let updated = 0, created = 0;
       const errors = [];
 
-      // Process in batches of 5 to stay within Notion rate limits
       for (let i = 0; i < entries.length; i += 5) {
         const batch = entries.slice(i, i + 5);
         const results = await Promise.allSettled(batch.map(async (entry) => {
-          const { date, weight, bmi, bodyFat, water, muscle, bone } = entry;
+          const { date, weight, bodyFat, water, muscle, bone } = entry;
           if (!weight) throw new Error('missing weight');
 
-          const shortDate = new Date(date + 'T00:00:00')
-            .toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+          const compProps = {};
+          if (bodyFat != null) compProps['Body Fat (%)'] = { number: bodyFat };
+          if (water   != null) compProps['Water (%)']    = { number: water };
+          if (muscle  != null) compProps['Muscle (%)']   = { number: muscle };
+          if (bone    != null) compProps['Bone (kg)']    = { number: bone };
 
-          const props = {
-            Name:          { title: [{ text: { content: `${shortDate} — ${weight}kg` } }] },
-            Date:          { date: { start: date } },
-            'Weight (kg)': { number: weight },
-          };
-          if (bmi     != null) props['BMI']          = { number: bmi };
-          if (bodyFat != null) props['Body Fat (%)'] = { number: bodyFat };
-          if (water   != null) props['Water (%)']    = { number: water };
-          if (muscle  != null) props['Muscle (%)']   = { number: muscle };
-          if (bone    != null) props['Bone (kg)']    = { number: bone };
-
-          return notion('/pages', 'POST', {
-            parent: { database_id: DB.weightLog },
-            properties: props,
-          });
+          if (existingByDate.has(date)) {
+            // Update existing page — only overwrite body comp (preserve Phase etc.)
+            await notion(`/pages/${existingByDate.get(date)}`, 'PATCH', {
+              properties: {
+                'Weight (kg)': { number: weight },
+                ...compProps,
+              },
+            });
+            return 'updated';
+          } else {
+            // Create new page
+            const shortDate = new Date(date + 'T00:00:00')
+              .toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+            await notion('/pages', 'POST', {
+              parent: { database_id: DB.weightLog },
+              properties: {
+                Name:          { title: [{ text: { content: `${shortDate} — ${weight}kg` } }] },
+                Date:          { date: { start: date } },
+                'Weight (kg)': { number: weight },
+                ...compProps,
+              },
+            });
+            existingByDate.set(date, 'new'); // prevent duplicates if same date appears twice
+            return 'created';
+          }
         }));
 
-        for (const result of results) {
-          if (result.status === 'fulfilled') imported++;
-          else errors.push(result.reason?.message ?? 'unknown error');
+        for (const r of results) {
+          if (r.status === 'fulfilled') { if (r.value === 'updated') updated++; else created++; }
+          else errors.push(r.reason?.message ?? 'unknown error');
         }
       }
 
-      return res.json({ ok: true, imported, total: entries.length, errors });
+      return res.json({ ok: true, updated, created, total: entries.length, errors });
     }
 
     // ── POST: migrate-weight-schema ──────────────────────────────────────────

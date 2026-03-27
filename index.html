@@ -1497,7 +1497,16 @@ function parseHealthManagerCSV(text) {
       bone:    p(cols[7]),
     });
   }
-  return entries;
+
+  // Deduplicate by date — keep the row with the most body comp fields populated
+  const byDate = new Map();
+  for (const e of entries) {
+    const prev = byDate.get(e.date);
+    if (!prev) { byDate.set(e.date, e); continue; }
+    const score = o => [o.bodyFat, o.water, o.muscle, o.bone].filter(v => v !== null).length;
+    if (score(e) > score(prev)) byDate.set(e.date, e);
+  }
+  return [...byDate.values()];
 }
 
 function showCSVPreview(entries) {
@@ -1550,13 +1559,14 @@ async function importWeightCSV() {
   document.getElementById('wl-result-sub').textContent = `Sending ${wlParsedEntries.length} entries to Notion`;
 
   try {
-    const result = await api('batch-log-weight', 'POST', { entries: wlParsedEntries });
+    const result = await api('upsert-weight-entries', 'POST', { entries: wlParsedEntries });
 
+    const ok = (result.updated ?? 0) + (result.created ?? 0);
     document.getElementById('wl-result-icon').textContent = result.errors?.length > 0 ? '⚠️' : '✅';
-    document.getElementById('wl-result-text').textContent = `${result.imported} of ${result.total} imported`;
+    document.getElementById('wl-result-text').textContent = `${ok} of ${result.total} entries saved`;
     document.getElementById('wl-result-sub').textContent = result.errors?.length > 0
-      ? `${result.errors.length} entries failed — check Notion for details`
-      : 'All entries saved to Notion successfully';
+      ? `${result.updated ?? 0} updated · ${result.created ?? 0} created · ${result.errors.length} failed`
+      : `${result.updated ?? 0} existing entries updated · ${result.created ?? 0} new entries created`;
 
     document.getElementById('wl-bottom').innerHTML = `
       <button class="btn btn-primary" onclick="resetWeightImport()">Import Another File</button>
