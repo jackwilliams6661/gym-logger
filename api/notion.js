@@ -793,10 +793,11 @@ export default async function handler(req, res) {
         })
       );
 
-      // 4. Compute per-rep-range maxes (best weight for exact rep count)
+      // 4. Compute per-rep-range maxes and volume history per session date
       const exercises = topExercises.map(ex => {
         const logData = logbookByExercise.find(l => l.exerciseId === ex.id);
         const repMaxes = {};
+        const volumeByDate = {};
         if (logData) {
           for (const set of logData.sets) {
             const reps   = set.properties.Reps?.number;
@@ -805,9 +806,15 @@ export default async function handler(req, res) {
               if (repMaxes[reps] == null || weight > repMaxes[reps]) {
                 repMaxes[reps] = weight;
               }
+              // Volume = weight × reps, grouped by session date (from created_time)
+              const date = set.created_time.split('T')[0];
+              volumeByDate[date] = (volumeByDate[date] || 0) + weight * reps;
             }
           }
         }
+        const volumeHistory = Object.entries(volumeByDate)
+          .map(([date, volume]) => ({ date, volume: Math.round(volume) }))
+          .sort((a, b) => a.date.localeCompare(b.date));
         return {
           name:        ex.name,
           muscleGroup: ex.muscleGroupIds.length > 0
@@ -815,10 +822,69 @@ export default async function handler(req, res) {
             : 'Unknown',
           bestWeight:  ex.bestWeight,
           repMaxes,
+          volumeHistory,
         };
       });
 
       return res.json({ exercises });
+    }
+
+    // ── GET: exercise-last-session ───────────────────────────────────────────
+    if (action === 'exercise-last-session') {
+      const { exerciseId, excludeWorkoutId } = req.query;
+      if (!exerciseId) return res.status(400).json({ error: 'exerciseId required' });
+
+      // Fetch up to 50 most-recently-created logbook entries for this exercise
+      let recent = [], cursor;
+      do {
+        const d = await notion(`/databases/${DB.logbook}/query`, 'POST', {
+          filter: { property: 'Exercise', relation: { contains: exerciseId } },
+          sorts: [{ timestamp: 'created_time', direction: 'descending' }],
+          page_size: 50,
+          ...(cursor ? { start_cursor: cursor } : {}),
+        });
+        recent = recent.concat(d.results);
+        cursor = d.has_more && recent.length < 50 ? d.next_cursor : undefined;
+      } while (cursor);
+
+      // Group by workout, skipping the current (in-progress) workout
+      const byWorkout = new Map();
+      for (const entry of recent) {
+        const workoutId = entry.properties.Workout?.relation?.[0]?.id;
+        if (!workoutId || workoutId === excludeWorkoutId) continue;
+        if (!byWorkout.has(workoutId)) byWorkout.set(workoutId, []);
+        byWorkout.get(workoutId).push(entry);
+      }
+
+      if (byWorkout.size === 0) return res.json({ sets: [] });
+
+      // First entry (created_time desc) = most recent previous workout
+      const [latestWorkoutId, latestEntries] = [...byWorkout.entries()][0];
+
+      // Fetch workout date
+      const workout = await notion(`/pages/${latestWorkoutId}`);
+      const date = workout.properties.Date?.date?.start
+        ?? latestEntries[0].created_time.split('T')[0];
+
+      const sets = latestEntries
+        .map(entry => {
+          const notes    = entry.properties.Notes?.title?.[0]?.plain_text ?? '';
+          const rawWeight = entry.properties.Weight?.number ?? null;
+          const rawReps   = entry.properties.Reps?.number ?? null;
+          const isBodyweight = notes.includes(' · BW') || rawWeight === null;
+          const secMatch = notes.match(/ · (\d+)s(?:\s|$)/);
+          return {
+            setNum:      entry.properties.Set?.number ?? 1,
+            weight:      rawWeight,
+            reps:        rawReps,
+            isBodyweight,
+            repsNA:      rawReps === null,
+            seconds:     secMatch ? parseInt(secMatch[1]) : 0,
+          };
+        })
+        .sort((a, b) => a.setNum - b.setNum);
+
+      return res.json({ date, sets });
     }
 
     // ── Unknown action ───────────────────────────────────────────────────────

@@ -287,6 +287,11 @@
     /* ── Divider ── */
     .divider { height: 1px; background: #1e1e1e; margin: 16px 0; }
 
+    /* ── Last Session (ghost history while logging) ── */
+    .last-session-area { margin-top: 16px; border-top: 1px solid #1e1e1e; padding-top: 16px; }
+    .last-session-date { font-size: 11px; color: #555; margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; }
+    .set-pill.ghost { opacity: 0.45; border-color: #222; pointer-events: none; }
+
     /* ── Finish view ── */
     .finish-icon { font-size: 64px; text-align: center; margin-bottom: 12px; }
     .finish-title { font-size: 26px; font-weight: 800; text-align: center; margin-bottom: 4px; }
@@ -571,6 +576,9 @@ const S = {
   detailWorkout: null,
   actionWorkout: null,   // { id, name } for the action sheet
   actionSet: null,       // { exIdx, setIdx } for the set action sheet
+  // Last-session cache: exerciseId → { date, sets } | false | undefined
+  // undefined = not fetched, null = in-progress, false = no data, object = data
+  lastSessionCache: {},
 };
 
 // ════════════════════════════════════════════════════
@@ -649,6 +657,7 @@ async function startNewWorkout() {
   S.activeExIdx = 0;
   S.notionWorkoutId = null;
   S.saving = false;
+  S.lastSessionCache = {};
   renderMuscleGrid();
   showView('view-muscles');
 }
@@ -945,7 +954,14 @@ function renderWorkout() {
     <div class="sets-area">
       <div class="sets-title">Sets logged this session</div>
       <div class="sets-grid" id="sets-grid">${renderSetPills(ex, S.activeExIdx)}</div>
+    </div>
+    <div class="last-session-area">
+      <div class="sets-title">Last Session</div>
+      <div id="last-session-pills">${renderLastSessionContent(ex.id)}</div>
     </div>`;
+
+  // Kick off background fetch (no-op if already cached)
+  if (S.notionConnected) fetchLastSession(ex.id);
 }
 
 function switchEx(idx) {
@@ -1022,6 +1038,46 @@ function renderSetPills(ex, exIdx) {
       <span>${fmtSetPill(s)}</span>
       <span style="color:#444; font-size:11px; margin-left:auto; padding-left:6px;">hold</span>
     </div>`).join('');
+}
+
+// ════════════════════════════════════════════════════
+//  LAST SESSION — ghost performance data while logging
+// ════════════════════════════════════════════════════
+function renderLastSessionContent(exerciseId) {
+  const cached = S.lastSessionCache[exerciseId];
+  // undefined = not started, null = in-progress
+  if (cached === undefined || cached === null) {
+    return '<div style="color:#3a3a3a; font-size:12px; padding:4px 0;">Loading last session…</div>';
+  }
+  if (!cached || !cached.sets?.length) {
+    return '<div style="color:#3a3a3a; font-size:12px; padding:4px 0;">No previous data</div>';
+  }
+  const pills = cached.sets.map((s, i) => `
+    <div class="set-pill ghost">
+      <span class="sn">S${i + 1}</span>
+      <span>${fmtSetPill(s)}</span>
+    </div>`).join('');
+  return `<div class="last-session-date">${fmtDateFromStr(cached.date)}</div>
+    <div class="sets-grid">${pills}</div>`;
+}
+
+async function fetchLastSession(exerciseId) {
+  if (S.lastSessionCache[exerciseId] !== undefined) return; // already fetched or in flight
+  S.lastSessionCache[exerciseId] = null; // mark in-progress
+
+  try {
+    const excludeParam = S.notionWorkoutId ? `&excludeWorkoutId=${S.notionWorkoutId}` : '';
+    const data = await api(`exercise-last-session&exerciseId=${exerciseId}${excludeParam}`);
+    S.lastSessionCache[exerciseId] = data.sets?.length > 0 ? data : false;
+  } catch {
+    S.lastSessionCache[exerciseId] = false;
+  }
+
+  // Update DOM if this exercise is still the active tab
+  if (S.workoutExercises[S.activeExIdx]?.id === exerciseId) {
+    const area = document.getElementById('last-session-pills');
+    if (area) area.innerHTML = renderLastSessionContent(exerciseId);
+  }
 }
 
 async function logSet() {

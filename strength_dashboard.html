@@ -63,6 +63,14 @@
     </div>
   </div>
 
+  <div class="card" id="volumeCard" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:0;">Volume Load per Session</div>
+      <select id="volumeExSelect" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:0.78rem;cursor:pointer;outline:none;"></select>
+    </div>
+    <div class="chart-wrap"><canvas id="volumeChart"></canvas></div>
+  </div>
+
   <script>
     const API = '/api/notion?action=dashboard-strength';
 
@@ -162,6 +170,86 @@
       }).join('');
     }
 
+    function fmtDateShort(s) {
+      if (!s) return '';
+      return new Date(s + 'T00:00:00').toLocaleDateString('en-AU', { month: 'short', day: 'numeric' });
+    }
+
+    let volumeChartInstance = null;
+
+    function renderVolumeSection({ exercises }) {
+      const withVolume = exercises.filter(e => e.volumeHistory?.length > 0);
+      if (!withVolume.length) return;
+
+      const card = document.getElementById('volumeCard');
+      card.style.display = 'block';
+
+      const sel = document.getElementById('volumeExSelect');
+      sel.innerHTML = withVolume.map(e =>
+        `<option value="${e.name}">${e.name}</option>`
+      ).join('');
+      sel.onchange = () => renderVolumeChart(withVolume, sel.value);
+
+      renderVolumeChart(withVolume, withVolume[0].name);
+    }
+
+    function renderVolumeChart(exercises, exerciseName) {
+      const ex = exercises.find(e => e.name === exerciseName) || exercises[0];
+      if (!ex?.volumeHistory?.length) return;
+
+      if (volumeChartInstance) { volumeChartInstance.destroy(); volumeChartInstance = null; }
+
+      const labels = ex.volumeHistory.map(v => v.date);
+      const values = ex.volumeHistory.map(v => v.volume);
+      const color  = mgColor(ex.muscleGroup);
+
+      volumeChartInstance = new Chart(document.getElementById('volumeChart'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            borderColor: color,
+            backgroundColor: color + '22',
+            fill: true,
+            tension: 0.35,
+            pointRadius: 4,
+            pointHoverRadius: 7,
+            borderWidth: 2,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1e1a28', borderColor: '#261f33', borderWidth: 1,
+              titleColor: '#ede9f6', bodyColor: '#7c6d8c',
+              callbacks: {
+                title: items => fmtDateShort(items[0].label),
+                label: c => ` ${c.raw.toLocaleString()} kg volume`,
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: {
+                color: '#7c6d8c',
+                maxTicksLimit: 10,
+                callback: (_, i) => fmtDateShort(labels[i]),
+              },
+              grid: { color: '#261f33' },
+            },
+            y: {
+              ticks: { color: '#7c6d8c', callback: v => v.toLocaleString() + ' kg' },
+              grid: { color: '#261f33' },
+            },
+          },
+        },
+      });
+    }
+
     async function init() {
       try {
         const res = await fetch(API);
@@ -172,6 +260,7 @@
         renderKPIs(data);
         renderBarChart(data);
         renderExGrid(data);
+        renderVolumeSection(data);
       } catch (err) {
         document.getElementById('kpis').innerHTML = `<p class="err">Failed to load: ${err.message}</p>`;
         document.getElementById('exGrid').innerHTML = '';
