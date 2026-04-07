@@ -1683,6 +1683,13 @@ async function importWeightCSV() {
       ? `${result.updated ?? 0} updated · ${result.created ?? 0} created · ${result.errors.length} failed`
       : `${result.updated ?? 0} existing entries updated · ${result.created ?? 0} new entries created`;
 
+    if (result.errors?.length > 0) {
+      const errDetail = document.createElement('div');
+      errDetail.style.cssText = 'margin-top:12px; font-size:11px; color:#888; text-align:left; max-height:120px; overflow-y:auto; background:#1a1a1a; border-radius:8px; padding:8px 10px;';
+      errDetail.textContent = result.errors.slice(0, 5).join('\n');
+      document.getElementById('wl-result').appendChild(errDetail);
+    }
+
     document.getElementById('wl-bottom').innerHTML = `
       <button class="btn btn-primary" onclick="resetWeightImport()">Import Another File</button>
       <button class="btn btn-secondary" onclick="showView('view-home')">Done</button>`;
