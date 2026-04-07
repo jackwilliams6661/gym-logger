@@ -527,10 +527,17 @@ export default async function handler(req, res) {
         });
       } catch (_) { /* columns may already exist */ }
 
-      // Step 2 — fetch existing Notion pages in the import date range
+      // Step 2 — get title property name from schema + fetch existing pages in date range
       const sortedDates = entries.map(e => e.date).sort();
       const minDate = sortedDates[0];
       const maxDate = sortedDates[sortedDates.length - 1];
+
+      let titlePropName = 'Name';
+      try {
+        const dbSchema = await notion(`/databases/${DB.weightLog}`);
+        const titleEntry = Object.entries(dbSchema.properties).find(([, v]) => v.type === 'title');
+        if (titleEntry) titlePropName = titleEntry[0];
+      } catch (_) { /* fall back to 'Name' */ }
 
       let existing = [], cur;
       do {
@@ -587,9 +594,9 @@ export default async function handler(req, res) {
             await notion('/pages', 'POST', {
               parent: { database_id: DB.weightLog },
               properties: {
-                Name:          { title: [{ text: { content: `${shortDate} — ${weight}kg` } }] },
-                Date:          { date: { start: date } },
-                'Weight (kg)': { number: weight },
+                [titlePropName]: { title: [{ text: { content: `${shortDate} — ${weight}kg` } }] },
+                Date:            { date: { start: date } },
+                'Weight (kg)':   { number: weight },
                 ...compProps,
               },
             });
