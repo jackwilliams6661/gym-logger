@@ -288,7 +288,69 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── POST: migrate-logbook-schema ────────────────────────────────────────
+    // ── GET: exercise-last-session ─────────────────────────────────────────
+    if (action === 'exercise-last-session') {
+      const { exerciseId, excludeWorkoutId } = req.query;
+      if (!exerciseId) return res.status(400).json({ error: 'exerciseId required' });
+
+      // Fetch logbook entries for this exercise, most recent first
+      let all = [], cursor;
+      do {
+        const data = await notion(`/databases/${DB.logbook}/query`, 'POST', {
+          filter: { property: 'Exercise', relation: { contains: exerciseId } },
+          sorts: [{ timestamp: 'created_time', direction: 'descending' }],
+          page_size: 100,
+          ...(cursor ? { start_cursor: cursor } : {}),
+        });
+        all = all.concat(data.results);
+        cursor = data.has_more ? data.next_cursor : undefined;
+        // Stop once we've found entries from at least one valid workout
+        if (cursor) {
+          const seenWorkouts = new Set(
+            all.map(e => e.properties.Workout?.relation?.[0]?.id).filter(Boolean)
+          );
+          const validWorkouts = [...seenWorkouts].filter(id => id !== excludeWorkoutId);
+          if (validWorkouts.length >= 1) break;
+        }
+      } while (cursor);
+
+      // Find the most recent workout that isn't the excluded one
+      let targetWorkoutId = null;
+      for (const entry of all) {
+        const wId = entry.properties.Workout?.relation?.[0]?.id;
+        if (wId && wId !== excludeWorkoutId) { targetWorkoutId = wId; break; }
+      }
+      if (!targetWorkoutId) return res.json({ sets: [] });
+
+      // Collect entries for that workout and fetch its date
+      const entries = all.filter(e => e.properties.Workout?.relation?.[0]?.id === targetWorkoutId);
+      let date = '';
+      try {
+        const wk = await notion(`/pages/${targetWorkoutId}`);
+        date = wk.properties.Date?.date?.start ?? '';
+      } catch {}
+
+      const sets = entries.map(entry => {
+        const notes = entry.properties.Notes?.title?.[0]?.plain_text ?? '';
+        const isBodyweight = entry.properties.Bodyweight?.checkbox ?? notes.includes(' · BW');
+        const secFromNotes = (() => { const m = notes.match(/ · (\d+)s(?:\s|$)/); return m ? parseInt(m[1]) : 0; })();
+        const seconds = entry.properties.Seconds?.number ?? secFromNotes ?? 0;
+        const rawWeight = entry.properties.Weight?.number ?? null;
+        const rawReps = entry.properties.Reps?.number ?? null;
+        return {
+          setNum: entry.properties.Set?.number ?? 1,
+          weight: rawWeight,
+          reps: rawReps,
+          isBodyweight: isBodyweight || rawWeight === null,
+          repsNA: rawReps === null,
+          seconds,
+        };
+      }).sort((a, b) => a.setNum - b.setNum);
+
+      return res.json({ date, sets });
+    }
+
+        // ── POST: migrate-logbook-schema ────────────────────────────────────────
     if (action === 'migrate-logbook-schema' && req.method === 'POST') {
       await notion(`/databases/${DB.logbook}`, 'PATCH', {
         properties: {
